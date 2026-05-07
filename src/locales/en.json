@@ -1,0 +1,26 @@
+{
+  "english": "English",
+  "arabic": "Arabic",
+  "home": "Home",
+  "categories": "Categories",
+  "profile": "Profile",
+  "settings": "Settings",
+
+  "catalogue": "CATALOGUE",
+  "ourProducts": "Our Products",
+  "items": "items",
+  "searchProducts": "Search products…",
+  "featured": "Featured",
+  "updated": "Updated",
+  "aboutThisProduct": "ABOUT THIS PRODUCT",
+  "productInfoNote": "Prices and product details are managed by the store and may be updated at any time.",
+  "featuredProductsThisSeason": "featured products this season",
+  "noProductsFound": "No products found",
+  "tryDifferentSearchOrCategory": "Try a different search or category",
+
+  "All": "All",
+  "Accessories": "Accessories",
+  "Kitchen": "Kitchen",
+  "Home": "Home",
+  "Lighting": "Lighting"
+}

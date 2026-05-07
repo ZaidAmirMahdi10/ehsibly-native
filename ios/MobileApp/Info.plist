@@ -26,14 +26,42 @@
 	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
-	  <!-- Do not change NSAllowsArbitraryLoads to true, or you will risk app rejection! -->
 		<key>NSAllowsArbitraryLoads</key>
 		<false/>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string></string>
+	<string/>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Alexandria-Black.ttf</string>
+		<string>Alexandria-Bold.ttf</string>
+		<string>Alexandria-ExtraBold.ttf</string>
+		<string>Alexandria-ExtraLight.ttf</string>
+		<string>Alexandria-Light.ttf</string>
+		<string>Alexandria-Medium.ttf</string>
+		<string>Alexandria-Regular.ttf</string>
+		<string>Alexandria-SemiBold.ttf</string>
+		<string>Amiri-Bold.ttf</string>
+		<string>Amiri-BoldItalic.ttf</string>
+		<string>Amiri-Italic.ttf</string>
+		<string>Amiri-Regular.ttf</string>
+		<string>Cairo-Bold.ttf</string>
+		<string>Cairo-Regular.ttf</string>
+		<string>Cairo-SemiBold.ttf</string>
+		<string>ReemKufi-Bold.ttf</string>
+		<string>ReemKufi-Medium.ttf</string>
+		<string>ReemKufi-Regular.ttf</string>
+		<string>ReemKufi-SemiBold.ttf</string>
+		<string>Tajawal-Black.ttf</string>
+		<string>Tajawal-Bold.ttf</string>
+		<string>Tajawal-ExtraBold.ttf</string>
+		<string>Tajawal-ExtraLight.ttf</string>
+		<string>Tajawal-Light.ttf</string>
+		<string>Tajawal-Medium.ttf</string>
+		<string>Tajawal-Regular.ttf</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIRequiredDeviceCapabilities</key>

@@ -1,0 +1,26 @@
+{
+  "english": "الإنجليزية",
+  "arabic": "العربية",
+  "home": "الرئيسية",
+  "categories": "التصنيفات",
+  "profile": "حسابي",
+  "settings": "الإعدادات",
+
+  "catalogue": "الكتالوج",
+  "ourProducts": "منتجاتنا",
+  "items": "منتجات",
+  "searchProducts": "ابحث عن المنتجات…",
+  "featured": "مميز",
+  "updated": "تم التحديث",
+  "aboutThisProduct": "حول هذا المنتج",
+  "productInfoNote": "يتم إدارة الأسعار وتفاصيل المنتجات من قبل المتجر وقد يتم تحديثها في أي وقت.",
+  "featuredProductsThisSeason": "منتجات مميزة هذا الموسم",
+  "noProductsFound": "لم يتم العثور على منتجات",
+  "tryDifferentSearchOrCategory": "جرّب بحثًا أو تصنيفًا مختلفًا",
+
+  "All": "الكل",
+  "Accessories": "الإكسسوارات",
+  "Kitchen": "المطبخ",
+  "Home": "المنزل",
+  "Lighting": "الإضاءة"
+}

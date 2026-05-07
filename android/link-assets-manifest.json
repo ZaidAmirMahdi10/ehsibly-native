@@ -1,0 +1,109 @@
+{
+  "migIndex": 1,
+  "data": [
+    {
+      "path": "src/assets/fonts/Alexandria-Black.ttf",
+      "sha1": "f0caca5cc5e271a79993918bc117ead66c81de9a"
+    },
+    {
+      "path": "src/assets/fonts/Alexandria-Bold.ttf",
+      "sha1": "c1cb3750dd035bdeeb13a7fa93fbce4c094d8835"
+    },
+    {
+      "path": "src/assets/fonts/Alexandria-ExtraBold.ttf",
+      "sha1": "cce665b0d8a2ce797936564e09e5cd57afb401c4"
+    },
+    {
+      "path": "src/assets/fonts/Alexandria-ExtraLight.ttf",
+      "sha1": "ea683e22ac0aba96bf573f5fa30d0ea6cb534529"
+    },
+    {
+      "path": "src/assets/fonts/Alexandria-Light.ttf",
+      "sha1": "6ea5fda942a8d4fa1eafd21b90efd62b7dc102e4"
+    },
+    {
+      "path": "src/assets/fonts/Alexandria-Medium.ttf",
+      "sha1": "2a34b2d54cffdb6e8ec93c9fa0ce2ac4669f5ee7"
+    },
+    {
+      "path": "src/assets/fonts/Alexandria-Regular.ttf",
+      "sha1": "4e15c32ad5a28bfe1db4f0ddf8540d851c643ed6"
+    },
+    {
+      "path": "src/assets/fonts/Alexandria-SemiBold.ttf",
+      "sha1": "98cbccec195992416232a18d5b73630fa80dafa6"
+    },
+    {
+      "path": "src/assets/fonts/Amiri-Bold.ttf",
+      "sha1": "7adebd217ed8c857d70c191feab05177df6c4685"
+    },
+    {
+      "path": "src/assets/fonts/Amiri-BoldItalic.ttf",
+      "sha1": "c8697e1b17a0502e90e4851bce884ea32dfe0491"
+    },
+    {
+      "path": "src/assets/fonts/Amiri-Italic.ttf",
+      "sha1": "8b7e886f7c06d35403afad2d3504ab0e725d1ecc"
+    },
+    {
+      "path": "src/assets/fonts/Amiri-Regular.ttf",
+      "sha1": "19ab462ab657230c55a3957f5f113b7aa930be58"
+    },
+    {
+      "path": "src/assets/fonts/Cairo-Bold.ttf",
+      "sha1": "dd70862b408a084a4e55aa03529eb8e06641165e"
+    },
+    {
+      "path": "src/assets/fonts/Cairo-Regular.ttf",
+      "sha1": "ff06dbd8c8a0fef12b0668cb7b849c209a21b435"
+    },
+    {
+      "path": "src/assets/fonts/Cairo-SemiBold.ttf",
+      "sha1": "30dc3ec8aba45f975411bc675494c59b5c227f47"
+    },
+    {
+      "path": "src/assets/fonts/ReemKufi-Bold.ttf",
+      "sha1": "93603efce633c3663d96db90c1350e1ae9ac1687"
+    },
+    {
+      "path": "src/assets/fonts/ReemKufi-Medium.ttf",
+      "sha1": "7c13a6e675a4dd9febc3ae0f80a7ce24989a7aa5"
+    },
+    {
+      "path": "src/assets/fonts/ReemKufi-Regular.ttf",
+      "sha1": "1fca97dcef301030122df2017ddc61d34e0061d7"
+    },
+    {
+      "path": "src/assets/fonts/ReemKufi-SemiBold.ttf",
+      "sha1": "eb20375241779136121867dc25c129a9c70b6964"
+    },
+    {
+      "path": "src/assets/fonts/Tajawal-Black.ttf",
+      "sha1": "0f82d01655c51022295f0a138ee3f16efc35c914"
+    },
+    {
+      "path": "src/assets/fonts/Tajawal-Bold.ttf",
+      "sha1": "86c33e621bb9eecabcb569994ae1edf2dbd3bfd6"
+    },
+    {
+      "path": "src/assets/fonts/Tajawal-ExtraBold.ttf",
+      "sha1": "ae3e929ac8df1343e9eafb3b894e68b3dfe2bbf7"
+    },
+    {
+      "path": "src/assets/fonts/Tajawal-ExtraLight.ttf",
+      "sha1": "7e62b070270f1805b67784eb44d68d2289c98f43"
+    },
+    {
+      "path": "src/assets/fonts/Tajawal-Light.ttf",
+      "sha1": "e18bc6e29892bd28265bb2c181191f81108ad365"
+    },
+    {
+      "path": "src/assets/fonts/Tajawal-Medium.ttf",
+      "sha1": "0f5cb2c0169e78f25bb1626cdc9a2899844619fa"
+    },
+    {
+      "path": "src/assets/fonts/Tajawal-Regular.ttf",
+      "sha1": "03b61c8af3509f93599cf118fd8be91b3f7ceedd"
+    }
+  ]
+}
