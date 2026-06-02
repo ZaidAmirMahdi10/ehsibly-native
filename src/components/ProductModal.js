@@ -3,7 +3,6 @@
 import React, {useContext} from 'react';
 import {
   View,
-  Text,
   Image,
   StyleSheet,
   TouchableOpacity,
@@ -18,7 +17,6 @@ import CustomView from './CustomView';
 import UpdatedBadge from './UpdatedBadge';
 import FeaturedBadge from './FeaturedBadge';
 
-
 const ProductModal = ({product, visible, onClose}) => {
   const {t} = useTranslation();
   const {currentDirection} = useContext(LanguageContext);
@@ -27,30 +25,47 @@ const ProductModal = ({product, visible, onClose}) => {
   if (!product) return null;
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet">
       <CustomView style={styles.modalContainer}>
-        <Image source={{uri: product.image}} style={styles.modalImage} />
+        <Image
+          source={{uri: product.image}}
+          style={styles.modalImage}
+          resizeMode="cover"
+        />
 
         <TouchableOpacity
-          style={[styles.modalClose, isRTL ? styles.leftClose : styles.rightClose]}
+          style={[
+            styles.modalClose,
+            isRTL ? styles.leftClose : styles.rightClose,
+          ]}
           onPress={onClose}
           activeOpacity={0.8}>
-          <Text style={styles.modalCloseText}>✕</Text>
+          <CustomText center style={styles.modalCloseText} paddingTop={0}>
+            ✕
+          </CustomText>
         </TouchableOpacity>
 
-        <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-          <CustomView row style={styles.modalMeta}>
-            <CustomText style={styles.modalCategory}>
+        <ScrollView
+          style={styles.modalBody}
+          contentContainerStyle={styles.modalBodyContent}
+          showsVerticalScrollIndicator={false}>
+          <CustomView style={styles.modalMeta}>
+            <CustomText style={styles.modalCategory} paddingTop={0}>
               {t(product.category).toUpperCase()}
             </CustomText>
 
             {product.featured && <FeaturedBadge />}
           </CustomView>
 
-          <CustomText style={styles.modalTitle}>{t(product.name)}</CustomText>
+          <CustomText paddingTop={10} style={styles.modalTitle}>
+            {t(product.name)}
+          </CustomText>
 
-          <CustomView row style={styles.modalPriceRow}>
-            <CustomText style={styles.modalPrice}>
+          <CustomView style={styles.modalPriceRow}>
+            <CustomText paddingTop={10} style={styles.modalPrice}>
               ${product.price.toFixed(2)}
             </CustomText>
 
@@ -59,7 +74,7 @@ const ProductModal = ({product, visible, onClose}) => {
 
           <View style={styles.divider} />
 
-          <CustomText style={styles.modalSectionLabel}>
+          <CustomText style={styles.modalSectionLabel} paddingTop={0}>
             {t('aboutThisProduct')}
           </CustomText>
 
@@ -67,17 +82,21 @@ const ProductModal = ({product, visible, onClose}) => {
             {t(product.description)}
           </CustomText>
 
-          <CustomView row style={styles.tagsRow}>
+          <CustomView style={styles.tagsRow}>
             {product.tags.map(tag => (
               <View key={tag} style={styles.tag}>
-                <CustomText center style={styles.tagText}>
+                <CustomText center style={styles.tagText} paddingTop={0}>
                   {t(tag)}
                 </CustomText>
               </View>
             ))}
           </CustomView>
 
-          <View style={[styles.infoNote, isRTL ? styles.infoNoteRTL : styles.infoNoteLTR]}>
+          <View
+            style={[
+              styles.infoNote,
+              isRTL ? styles.infoNoteRTL : styles.infoNoteLTR,
+            ]}>
             <CustomText style={styles.infoNoteText}>
               ℹ️ {t('productInfoNote')}
             </CustomText>
@@ -113,30 +132,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalCloseText: {
-    fontFamily: 'Tajawal-Regular',
     color: '#fff',
     fontSize: 14,
     fontWeight: '700',
   },
   modalBody: {
     flex: 1,
+  },
+  modalBodyContent: {
     paddingHorizontal: 24,
     paddingTop: 24,
+    paddingBottom: 40,
   },
   modalMeta: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 10,
   },
   modalCategory: {
-    fontFamily: 'Tajawal-Regular',
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 2,
     color: '#C1121F',
   },
   modalTitle: {
-    fontFamily: 'Tajawal-Regular',
     fontSize: 26,
     fontWeight: '800',
     color: '#1A1A1A',
@@ -145,12 +165,12 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   modalPriceRow: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 20,
   },
   modalPrice: {
-    fontFamily: 'Tajawal-Regular',
     fontSize: 30,
     fontWeight: '800',
     color: '#C1121F',
@@ -162,7 +182,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   modalSectionLabel: {
-    fontFamily: 'Tajawal-Regular',
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 2,
@@ -170,13 +189,13 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   modalDescription: {
-    fontFamily: 'Tajawal-Regular',
     fontSize: 15,
     color: '#6B6B6B',
     lineHeight: 24,
     marginBottom: 20,
   },
   tagsRow: {
+    flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
     marginBottom: 24,
@@ -188,7 +207,6 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   tagText: {
-    fontFamily: 'Tajawal-Regular',
     fontSize: 12,
     fontWeight: '600',
     color: '#C1121F',
@@ -207,7 +225,6 @@ const styles = StyleSheet.create({
     borderRightColor: '#3B82F6',
   },
   infoNoteText: {
-    fontFamily: 'Tajawal-Regular',
     fontSize: 12,
     color: '#4B5563',
     lineHeight: 18,

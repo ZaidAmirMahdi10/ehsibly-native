@@ -16,8 +16,17 @@ import CustomText from './CustomText';
 import CustomView from './CustomView';
 import UpdatedBadge from './UpdatedBadge';
 
-const ProductCard = ({item, onPress}) => {
+// ─────────────────────────────────────────────────────────────────────────────
+// Match this to your BottomTabNavigator USER_TYPE constant.
+// 'admin' — no favourite button shown
+// 'user'  — heart button shown on each card
+// ─────────────────────────────────────────────────────────────────────────────
+const USER_TYPE = 'user'; // <-- 'admin' | 'user'
+const isUser = USER_TYPE === 'user';
+
+const ProductCard = ({item, onPress, isFavourite = false, onToggleFavourite}) => {
   const scale = useRef(new Animated.Value(1)).current;
+  const heartScale = useRef(new Animated.Value(1)).current;
   const {t} = useTranslation();
   const {currentDirection} = useContext(LanguageContext);
   const isRTL = currentDirection === 'rtl';
@@ -36,6 +45,15 @@ const ProductCard = ({item, onPress}) => {
       speed: 50,
     }).start();
 
+  const handleHeartPress = () => {
+    // Bounce animation on the heart
+    Animated.sequence([
+      Animated.spring(heartScale, {toValue: 1.35, useNativeDriver: true, speed: 80}),
+      Animated.spring(heartScale, {toValue: 1, useNativeDriver: true, speed: 80}),
+    ]).start();
+    onToggleFavourite?.(item.id);
+  };
+
   return (
     <Animated.View style={[styles.cardWrapper, {transform: [{scale}]}]}>
       <TouchableOpacity
@@ -44,6 +62,8 @@ const ProductCard = ({item, onPress}) => {
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         style={styles.card}>
+
+        {/* ── Image ── */}
         <View style={styles.imageContainer}>
           <Image
             source={{uri: item.image}}
@@ -51,6 +71,7 @@ const ProductCard = ({item, onPress}) => {
             resizeMode="cover"
           />
 
+          {/* Featured badge */}
           {item.featured && (
             <View
               style={[
@@ -60,14 +81,35 @@ const ProductCard = ({item, onPress}) => {
               <Text style={styles.cardFeaturedBadgeText}>✦</Text>
             </View>
           )}
+
+          {/* Favourite button — user only, sits on the image */}
+          {isUser && (
+            <TouchableOpacity
+              onPress={handleHeartPress}
+              activeOpacity={0.8}
+              style={[
+                styles.heartBtn,
+                isRTL ? styles.heartBtnRight : styles.heartBtnLeft,
+                isFavourite && styles.heartBtnActive,
+              ]}>
+              <Animated.Text
+                style={[
+                  styles.heartIcon,
+                  {transform: [{scale: heartScale}]},
+                  isFavourite && styles.heartIconActive,
+                ]}>
+                {isFavourite ? '♥' : '♡'}
+              </Animated.Text>
+            </TouchableOpacity>
+          )}
         </View>
 
+        {/* ── Content ── */}
         <View style={styles.cardContent}>
-          <CustomView row style={styles.cardTopRow}>
+          <CustomView style={styles.cardTopRow}>
             <CustomText style={styles.cardCategory}>
               {t(item.category).toUpperCase()}
             </CustomText>
-
             <UpdatedBadge time={t(item.updatedAt)} />
           </CustomView>
 
@@ -79,11 +121,10 @@ const ProductCard = ({item, onPress}) => {
             {t(item.description)}
           </CustomText>
 
-          <CustomView row style={styles.cardFooter}>
+          <CustomView style={styles.cardFooter}>
             <CustomText style={styles.cardPrice}>
               ${item.price.toFixed(2)}
             </CustomText>
-
             <View style={styles.cardArrow}>
               <Text style={styles.cardArrowText}>{isRTL ? '←' : '→'}</Text>
             </View>
@@ -120,6 +161,8 @@ const styles = StyleSheet.create({
     height: 200,
     backgroundColor: '#EFEFEF',
   },
+
+  // Featured badge
   cardFeaturedBadge: {
     position: 'absolute',
     top: 12,
@@ -136,6 +179,39 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFF0F0',
   },
+  rightBadge: {right: 12},
+  leftBadge:  {left: 12},
+
+  // Heart / favourite button
+  heartBtn: {
+    position: 'absolute',
+    bottom: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 2},
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  heartBtnLeft: {left: 12},   // LTR: bottom-left of image
+  heartBtnRight: {right: 12}, // RTL: bottom-right of image
+  heartBtnActive: {
+    backgroundColor: '#FFF0F0',
+  },
+  heartIcon: {
+    fontSize: 18,
+    color: '#A8A8A8',
+  },
+  heartIconActive: {
+    color: '#C1121F',
+  },
+
+  // Card content
   cardContent: {
     padding: 16,
   },
@@ -143,6 +219,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 6,
+    flexDirection: 'row',
   },
   cardCategory: {
     fontFamily: 'Tajawal-Regular',
@@ -170,6 +247,7 @@ const styles = StyleSheet.create({
   cardFooter: {
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexDirection: 'row',
   },
   cardPrice: {
     fontFamily: 'Tajawal-Regular',
@@ -191,11 +269,5 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: '700',
-  },
-  rightBadge: {
-    right: 12,
-  },
-  leftBadge: {
-    left: 12,
   },
 });

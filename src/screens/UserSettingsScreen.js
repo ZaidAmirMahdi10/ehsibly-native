@@ -11,6 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import {useTranslation} from 'react-i18next';
+import {SafeAreaView} from 'react-native-safe-area-context';
 
 import {LanguageContext} from '../../App';
 import CustomText from '../components/CustomText';
@@ -19,7 +20,6 @@ import CustomView from '../components/CustomView';
 // ─── Brand Colors ─────────────────────────────────────────────────────────────
 const COLORS = {
   primary: '#C1121F',
-  primaryDark: '#8B0000',
   primaryLight: '#FF4757',
   bg: '#F8F6F3',
   card: '#FFFFFF',
@@ -27,13 +27,12 @@ const COLORS = {
   textSub: '#6B6B6B',
   textMuted: '#A8A8A8',
   border: '#EFEFEF',
-  borderFocus: '#C1121F',
   tag: '#FFF0F0',
   tagText: '#C1121F',
-  error: '#C1121F',
   inputBg: '#FAFAFA',
   dangerBg: '#FFF5F5',
   dangerBorder: '#FECACA',
+  error: '#C1121F',
 };
 
 const CURRENCIES = ['currencyUsd', 'currencyEur', 'currencySar', 'currencyAed'];
@@ -123,21 +122,29 @@ const CurrencyOption = ({label, code, selected, onPress}) => (
   </TouchableOpacity>
 );
 
-// ─── Danger Row ───────────────────────────────────────────────────────────────
-const DangerRow = ({icon, label, sublabel, btnLabel, onPress, last = false}) => (
-  <CustomView style={[styles.dangerRow, last && styles.dangerRowLast]}>
-    <View style={styles.dangerInfo}>
-      <CustomText style={styles.dangerLabel} paddingTop={0}>
+// ─── Account Action Row ───────────────────────────────────────────────────────
+const AccountRow = ({icon, label, sublabel, btnLabel, onPress, danger = false, last = false}) => (
+  <CustomView style={[styles.accountRow, last && styles.accountRowLast]}>
+    <View style={styles.accountInfo}>
+      <CustomText
+        style={[styles.accountLabel, danger && styles.accountLabelDanger]}
+        paddingTop={0}>
         {icon}  {label}
       </CustomText>
       {sublabel && (
-        <CustomText style={styles.dangerSub} paddingTop={0}>
+        <CustomText style={styles.accountSub} paddingTop={0}>
           {sublabel}
         </CustomText>
       )}
     </View>
-    <TouchableOpacity onPress={onPress} style={styles.dangerBtn} activeOpacity={0.75}>
-      <CustomText center style={styles.dangerBtnText} paddingTop={0}>
+    <TouchableOpacity
+      onPress={onPress}
+      style={[styles.accountBtn, danger && styles.accountBtnDanger]}
+      activeOpacity={0.75}>
+      <CustomText
+        center
+        style={[styles.accountBtnText, danger && styles.accountBtnTextDanger]}
+        paddingTop={0}>
         {btnLabel}
       </CustomText>
     </TouchableOpacity>
@@ -145,7 +152,7 @@ const DangerRow = ({icon, label, sublabel, btnLabel, onPress, last = false}) => 
 );
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
-export default function SettingsScreen({navigation}) {
+export default function UserSettingsScreen({navigation}) {
   const {t} = useTranslation();
   const {currentDirection, changeLanguage} = useContext(LanguageContext);
   const isRTL = currentDirection === 'rtl';
@@ -155,25 +162,24 @@ export default function SettingsScreen({navigation}) {
   const [selectedCurrency, setSelectedCurrency] = useState('USD');
 
   // Notifications
-  const [notifyNewUser, setNotifyNewUser] = useState(true);
-  const [notifyPriceChange, setNotifyPriceChange] = useState(false);
-  const [notifyLowStock, setNotifyLowStock] = useState(true);
-  const [notifyAppUpdates, setNotifyAppUpdates] = useState(true);
+  const [notifyPriceChange, setNotifyPriceChange] = useState(true);
+  const [notifyNewProducts, setNotifyNewProducts] = useState(true);
+  const [notifyAppUpdates, setNotifyAppUpdates] = useState(false);
 
   const handleLanguageChange = lang => {
     setSelectedLang(lang);
     changeLanguage?.(lang);
   };
 
-  const handleDangerAction = (titleKey, msgKey) => {
+  const handleConfirmAction = (titleKey, msgKey, onConfirm) => {
     Alert.alert(t(titleKey), t(msgKey), [
       {text: t('dangerAlertCancel'), style: 'cancel'},
-      {text: t('dangerAlertConfirm'), style: 'destructive', onPress: () => {}},
+      {text: t('dangerAlertConfirm'), style: 'destructive', onPress: onConfirm},
     ]);
   };
 
   return (
-    <>
+    <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
 
       {/* ── Top Bar ── */}
@@ -196,13 +202,8 @@ export default function SettingsScreen({navigation}) {
           </CustomText>
         </View>
 
-        <View style={styles.topBarRight}>
-          <View style={styles.adminBadge}>
-            <CustomText center style={styles.adminBadgeText} paddingTop={0}>
-              ⚙
-            </CustomText>
-          </View>
-        </View>
+        {/* Placeholder to keep title centered */}
+        <View style={styles.topBarRight} />
       </CustomView>
 
       <ScrollView
@@ -219,7 +220,6 @@ export default function SettingsScreen({navigation}) {
             subtitle={t('sectionAppearanceSubtitle')}
           />
 
-          {/* Language */}
           <CustomText style={styles.subSectionLabel} paddingTop={0}>
             {t('language')}
           </CustomText>
@@ -241,7 +241,6 @@ export default function SettingsScreen({navigation}) {
 
           <View style={styles.sectionDivider} />
 
-          {/* Currency */}
           <CustomText style={styles.subSectionLabel} paddingTop={0}>
             {t('currency')}
           </CustomText>
@@ -268,22 +267,16 @@ export default function SettingsScreen({navigation}) {
           />
 
           <ToggleRow
-            label={t('notifyNewUser')}
-            sublabel={t('notifyNewUserSub')}
-            value={notifyNewUser}
-            onValueChange={setNotifyNewUser}
-          />
-          <ToggleRow
             label={t('notifyPriceChange')}
             sublabel={t('notifyPriceChangeSub')}
             value={notifyPriceChange}
             onValueChange={setNotifyPriceChange}
           />
           <ToggleRow
-            label={t('notifyLowStock')}
-            sublabel={t('notifyLowStockSub')}
-            value={notifyLowStock}
-            onValueChange={setNotifyLowStock}
+            label={t('notifyNewProducts')}
+            sublabel={t('notifyNewProductsSub')}
+            value={notifyNewProducts}
+            onValueChange={setNotifyNewProducts}
           />
           <ToggleRow
             label={t('notifyAppUpdates')}
@@ -294,34 +287,32 @@ export default function SettingsScreen({navigation}) {
           />
         </View>
 
-        {/* ══ Section 3: Danger Zone ══ */}
+        {/* ══ Section 3: Account ══ */}
         <View style={[styles.section, styles.sectionDanger]}>
           <SectionHeader
             number="3"
-            title={t('sectionDanger')}
-            subtitle={t('sectionDangerSubtitle')}
+            title={t('sectionAccount')}
+            subtitle={t('sectionAccountSubtitle')}
           />
 
-          <DangerRow
-            icon="🗑"
-            label={t('clearAllProducts')}
-            sublabel={t('clearAllProductsSub')}
-            btnLabel={t('clearAllProductsBtn')}
-            onPress={() => handleDangerAction('dangerAlertTitle', 'dangerAlertMessage')}
-          />
-          <DangerRow
-            icon="♻"
-            label={t('resetApp')}
-            sublabel={t('resetAppSub')}
-            btnLabel={t('resetAppBtn')}
-            onPress={() => handleDangerAction('dangerAlertTitle', 'dangerAlertMessage')}
-          />
-          <DangerRow
+          <AccountRow
             icon="🔓"
             label={t('signOut')}
             sublabel={t('signOutSub')}
             btnLabel={t('signOutBtn')}
-            onPress={() => handleDangerAction('dangerAlertTitle', 'dangerAlertMessage')}
+            onPress={() =>
+              handleConfirmAction('dangerAlertTitle', 'dangerAlertMessage', () => {})
+            }
+          />
+          <AccountRow
+            icon="🗑"
+            label={t('deleteAccount')}
+            sublabel={t('deleteAccountSub')}
+            btnLabel={t('deleteAccountBtn')}
+            danger
+            onPress={() =>
+              handleConfirmAction('dangerAlertTitle', 'dangerAlertMessage', () => {})
+            }
             last
           />
         </View>
@@ -337,19 +328,24 @@ export default function SettingsScreen({navigation}) {
 
         <View style={{height: 40}} />
       </ScrollView>
-    </>
+    </SafeAreaView>
   );
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: COLORS.bg,
+  },
+
   // Top bar
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'android' ? 20 : 56,
+    paddingTop: Platform.OS === 'android' ? 12 : 4,
     paddingBottom: 14,
     backgroundColor: COLORS.bg,
     borderBottomWidth: 1,
@@ -388,19 +384,6 @@ const styles = StyleSheet.create({
   },
   topBarRight: {
     width: 40,
-    alignItems: 'flex-end',
-  },
-  adminBadge: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.tag,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  adminBadgeText: {
-    fontSize: 18,
-    color: COLORS.primary,
   },
 
   // Scroll
@@ -602,8 +585,8 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
 
-  // Danger rows
-  dangerRow: {
+  // Account rows
+  accountRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -612,35 +595,44 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.dangerBorder,
     gap: 12,
   },
-  dangerRowLast: {
+  accountRowLast: {
     borderBottomWidth: 0,
     paddingBottom: 0,
   },
-  dangerInfo: {
+  accountInfo: {
     flex: 1,
   },
-  dangerLabel: {
+  accountLabel: {
     fontSize: 14,
     fontWeight: '700',
-    color: COLORS.error,
+    color: COLORS.text,
     marginBottom: 2,
   },
-  dangerSub: {
+  accountLabelDanger: {
+    color: COLORS.error,
+  },
+  accountSub: {
     fontSize: 12,
     color: COLORS.textMuted,
     lineHeight: 17,
   },
-  dangerBtn: {
+  accountBtn: {
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 10,
     borderWidth: 1.5,
-    borderColor: COLORS.error,
+    borderColor: COLORS.border,
     backgroundColor: COLORS.card,
   },
-  dangerBtnText: {
+  accountBtnDanger: {
+    borderColor: COLORS.error,
+  },
+  accountBtnText: {
     fontSize: 12,
     fontWeight: '700',
+    color: COLORS.textSub,
+  },
+  accountBtnTextDanger: {
     color: COLORS.error,
   },
 

@@ -12,6 +12,7 @@ const CategoryPill = ({label, active, onPress}) => {
       style={[styles.pill, active && styles.pillActive]}>
       <CustomText
         center
+        paddingTop={0}
         style={[styles.pillText, active && styles.pillTextActive]}>
         {label}
       </CustomText>
