@@ -69,7 +69,19 @@ const HomeScreen = () => {
   const collapseAnim = useRef(new Animated.Value(0)).current;
   const isCollapsedRef = useRef(false);
   const handleScroll = e => {
-    const y = e.nativeEvent.contentOffset.y;
+    const {contentOffset, contentSize, layoutMeasurement} = e.nativeEvent;
+    // A list too short to really scroll past the threshold is still
+    // rubber-band-bounceable on iOS — touching it can transiently push
+    // contentOffset.y above COLLAPSE_SCROLL_THRESHOLD and immediately
+    // spring back below EXPAND_SCROLL_THRESHOLD as it settles, which
+    // collapses and re-expands the header within the same gesture (looks
+    // like a flash/glitch). If there isn't enough real content to reach
+    // the threshold through genuine scrolling, don't collapse at all.
+    const maxScroll = contentSize.height - layoutMeasurement.height;
+    if (maxScroll < COLLAPSE_SCROLL_THRESHOLD) {
+      return;
+    }
+    const y = contentOffset.y;
     if (!isCollapsedRef.current && y > COLLAPSE_SCROLL_THRESHOLD) {
       isCollapsedRef.current = true;
       Animated.timing(collapseAnim, {toValue: 1, duration: 220, easing: Easing.out(Easing.cubic), useNativeDriver: false}).start();
