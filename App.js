@@ -1,14 +1,15 @@
 import React, {useState, useEffect, createContext} from 'react';
 import {NavigationContainer} from '@react-navigation/native';
-import {SafeAreaView} from 'react-native-safe-area-context';
+import {SafeAreaProvider} from 'react-native-safe-area-context';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import BottomTabNavigator from './src/navigation/BottomTabNavigator';
+import RootNavigator from './src/navigation/RootNavigator';
 
 import './i18n';
 import {useTranslation} from 'react-i18next';
-import { AppProvider } from './src/context/AppContext';
+import {AuthProvider} from './src/context/AuthContext';
+import {AlertProvider} from './src/context/AlertContext';
 
 export const LanguageContext = createContext();
 export default function App() {
@@ -62,7 +63,7 @@ export default function App() {
   });
 
   return (
-    <AppProvider>
+    <AuthProvider>
       <LanguageContext.Provider
         value={{
           currentLanguage,
@@ -70,12 +71,14 @@ export default function App() {
           currentDirection,
           changeDirection,
         }}>
-        <NavigationContainer>
-          <SafeAreaView style={{flex: 1, backgroundColor: '#fff'}}>
-            <BottomTabNavigator />
-          </SafeAreaView>
-        </NavigationContainer>
+        <AlertProvider>
+          <NavigationContainer>
+            <SafeAreaProvider style={{flex: 1}}>
+              <RootNavigator />
+            </SafeAreaProvider>
+          </NavigationContainer>
+        </AlertProvider>
       </LanguageContext.Provider>
-    </AppProvider>
+    </AuthProvider>
   );
 }

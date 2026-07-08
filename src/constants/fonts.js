@@ -72,4 +72,41 @@ export const FONTS = {
     ios: 'Tajawal',
     android: 'Tajawal-Regular',
   }),
+
+  // English/Latin text font — system-bundled on both platforms (no asset
+  // linking needed): Avenir Next on iOS, Roboto Medium on Android. Both are
+  // a step up from the plain system default without adding a new font file.
+  ENGLISH_DEFAULT: Platform.select({
+    ios: 'Avenir Next',
+    android: 'sans-serif-medium',
+  }),
+};
+
+// Android resolves a custom fontFamily by exact filename, with no shared-
+// family weight matching like iOS — combining "Tajawal-Regular" with any
+// fontWeight that file wasn't built as finds no matching variant and
+// silently falls back to the system font. Any Arabic text setting its own
+// fontWeight (via CustomText's `bold` prop, or a caller's own style) needs
+// to resolve to the real matching Tajawal file instead. On iOS this is
+// always a no-op: every Tajawal weight is already registered under one
+// shared "Tajawal" family that resolves correctly via fontWeight regardless.
+export const tajawalFamilyForWeight = weight => {
+  switch (String(weight)) {
+    case '900':
+      return FONTS.TAJAWAL_BLACK;
+    case '800':
+      return FONTS.TAJAWAL_EXTRA_BOLD;
+    case 'bold':
+    case '700':
+      return FONTS.TAJAWAL_BOLD;
+    case '600':
+    case '500':
+      return FONTS.TAJAWAL_MEDIUM;
+    case '300':
+    case '200':
+    case '100':
+      return FONTS.TAJAWAL_LIGHT;
+    default:
+      return FONTS.DEFAULT;
+  }
 };

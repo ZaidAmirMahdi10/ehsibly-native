@@ -1,24 +1,28 @@
 // components/CustomText.js
 
 import React, {useContext} from 'react';
-import {Text} from 'react-native';
+import {Text, StyleSheet} from 'react-native';
 
 import {LanguageContext} from '../../App';
-import {FONTS} from '../constants/fonts';
+import {FONTS, tajawalFamilyForWeight} from '../constants/fonts';
 
-const CustomText = ({children, style, paddingTop}) => {
+const CustomText = ({children, style, paddingTop, center, bold, align, lineHeight, ...props}) => {
   const context = useContext(LanguageContext);
   const currentDirection = context?.currentDirection;
+  const isRTL = currentDirection === 'rtl';
+  const effectiveWeight = bold ? '700' : StyleSheet.flatten(style)?.fontWeight;
+  const fontFamily = isRTL ? tajawalFamilyForWeight(effectiveWeight) : FONTS.ENGLISH_DEFAULT;
   return (
     <Text
       style={[
         style,
-        {fontFamily: FONTS.DEFAULT},
-        {direction: "ltr"},
-        {textAlign: currentDirection === 'rtl' ? 'right' : 'left'},
-        {lineHeight: 20},
+        {fontFamily},
+        {textAlign: align || (center ? 'center' : isRTL ? 'right' : 'left')},
+        {lineHeight: lineHeight ?? 20},
         {paddingTop: paddingTop ?? 2},
-      ]}>
+        bold && {fontWeight: '700'},
+      ]}
+      {...props}>
       {children}
     </Text>
   );
