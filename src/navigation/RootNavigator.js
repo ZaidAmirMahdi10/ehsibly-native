@@ -23,7 +23,7 @@ import AppTabs, {SUPPORTED_ORGANIZATION_TYPES} from './AppTabs';
 import LoadingState from '../components/LoadingState';
 import {View, Text, TouchableOpacity, StyleSheet} from 'react-native';
 import {COLORS} from '../constants/theme';
-import {FONTS} from '../constants/fonts';
+import {FONTS, tajawalStyleForWeight} from '../constants/fonts';
 
 // Pure-JS stack (not native-stack) — deliberately avoids react-native-screens,
 // which repeatedly crashed ("Unimplemented component: <RNSScreenStack>",
@@ -80,10 +80,12 @@ export default function RootNavigator() {
     headerShown: true,
     headerStyle: {backgroundColor: COLORS.primary},
     headerTintColor: '#fff',
-    headerTitleStyle: {
-      fontWeight: '700',
-      fontFamily: isRTL ? FONTS.TAJAWAL_BOLD : FONTS.ENGLISH_DEFAULT,
-    },
+    // Android: fontWeight alongside an exact Tajawal filename silently falls
+    // back to the system font (see tajawalStyleForWeight) — the RTL branch
+    // must not carry a fontWeight of its own.
+    headerTitleStyle: isRTL
+      ? tajawalStyleForWeight('700')
+      : {fontWeight: '700', fontFamily: FONTS.ENGLISH_DEFAULT},
     headerBackTitleVisible: false,
     headerLeft: isRTL ? () => null : () => renderHeaderBack(navigation.goBack),
     headerRight: isRTL ? () => renderHeaderBack(navigation.goBack) : undefined,

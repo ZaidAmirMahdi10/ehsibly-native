@@ -337,16 +337,21 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     ...PRIMARY_SHADOW,
   },
+  // includeFontPadding: Android-only (no-op on iOS). Same fix as the bank
+  // hero card: these are plain Text nodes inside a fixed-height animated
+  // card, and Android's default font padding on Tajawal's tall metrics
+  // inflates each line enough to clip the amount at the card's bottom.
   balanceLabel: {
     color: COLORS.accent,
     fontSize: 11,
     fontWeight: '600',
     letterSpacing: 1.2,
     textTransform: 'uppercase',
+    includeFontPadding: false,
   },
-  balanceAmount: {color: '#fff', fontWeight: '800', marginTop: 4},
+  balanceAmount: {color: '#fff', fontWeight: '800', marginTop: 4, includeFontPadding: false},
   balanceRow: {marginTop: 8},
-  balanceHint: {color: 'rgba(255,255,255,0.7)', fontSize: 12},
+  balanceHint: {color: 'rgba(255,255,255,0.7)', fontSize: 12, includeFontPadding: false},
   searchWrap: {marginHorizontal: 20, marginBottom: 12},
   sectionRow: {
     justifyContent: 'space-between',
