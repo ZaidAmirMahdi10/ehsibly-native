@@ -86,34 +86,6 @@ export default function AppTabs() {
         }}
       />
 
-      <Tab.Screen
-        name={t('profile')}
-        component={ProfileScreen}
-        options={{
-          tabBarLabel: renderLabel(t('profile')),
-          tabBarIcon: ({color}) => (
-            <Image
-              style={{tintColor: color, width: 28, height: 28}}
-              source={require('../assets/bottom-tab-icons/user.png')}
-            />
-          ),
-        }}
-      />
-
-      <Tab.Screen
-        name={t('settings')}
-        component={SettingsScreen}
-        options={{
-          tabBarLabel: renderLabel(t('settings')),
-          tabBarIcon: ({color}) => (
-            <Image
-              style={{tintColor: color, width: 23, height: 23}}
-              source={require('../assets/bottom-tab-icons/settings.png')}
-            />
-          ),
-        }}
-      />
-
       {isBankOrg ? (
         <Tab.Screen
           name={t('bankReportsTab')}
@@ -138,6 +110,36 @@ export default function AppTabs() {
           }}
         />
       )}
+
+      <Tab.Screen
+        name={t('profile')}
+        component={ProfileScreen}
+        options={{
+          tabBarLabel: renderLabel(t('profile')),
+          tabBarIcon: ({color}) => (
+            <Image
+              style={{tintColor: color, width: 28, height: 28}}
+              source={require('../assets/bottom-tab-icons/user.png')}
+            />
+          ),
+        }}
+      />
+
+      {/* Settings deliberately sits last in the tab bar for every org type;
+          Profile sits second-to-last, just before it. */}
+      <Tab.Screen
+        name={t('settings')}
+        component={SettingsScreen}
+        options={{
+          tabBarLabel: renderLabel(t('settings')),
+          tabBarIcon: ({color}) => (
+            <Image
+              style={{tintColor: color, width: 23, height: 23}}
+              source={require('../assets/bottom-tab-icons/settings.png')}
+            />
+          ),
+        }}
+      />
     </Tab.Navigator>
   );
 }

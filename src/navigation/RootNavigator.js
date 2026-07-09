@@ -18,6 +18,7 @@ import AddSubCompanyScreen from '../screens/organization/AddSubCompanyScreen';
 import BankPickerScreen from '../screens/organization/BankPickerScreen';
 import AddBankScreen from '../screens/organization/AddBankScreen';
 import ChangePasswordScreen from '../screens/general/ChangePasswordScreen';
+import AboutDeveloperScreen from '../screens/general/AboutDeveloperScreen';
 import UnsupportedOrgTypeScreen from '../screens/organization/UnsupportedOrgTypeScreen';
 import AppTabs, {SUPPORTED_ORGANIZATION_TYPES} from './AppTabs';
 import LoadingState from '../components/LoadingState';
@@ -144,6 +145,14 @@ export default function RootNavigator() {
             name="AddBank"
             component={AddBankScreen}
             options={props => ({...formHeaderOptions(props), title: t('addBankTitle')})}
+          />
+          <Stack.Screen
+            name="AboutDeveloper"
+            component={AboutDeveloperScreen}
+            // TestFlight-style page: the screen draws its own full-bleed
+            // gradient hero with its own back chevron, so the stack header
+            // stays hidden entirely.
+            options={{headerShown: false}}
           />
           <Stack.Screen
             name="ChangePassword"
