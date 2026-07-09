@@ -19,6 +19,7 @@ import SelectField from '../../components/SelectField';
 import PrimaryButton from '../../components/PrimaryButton';
 import LanguageToggle from '../../components/LanguageToggle';
 import {register, resendVerificationEmail} from '../../services/auth';
+import {makeShadow} from '../../constants/theme';
 
 // Mirrors the web app's Register.js exactly: same two tabs, same field set,
 // same organizationType/subscriptionType option lists, same /register and
@@ -378,11 +379,7 @@ const styles = StyleSheet.create({
   },
   tabActive: {
     backgroundColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 1},
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
-    elevation: 1,
+    ...makeShadow({y: 1, blur: 3, opacity: 0.08}),
   },
   tabText: {fontSize: 13, fontWeight: '600', color: '#8A8FA3'},
   tabTextActive: {color: '#79329a'},

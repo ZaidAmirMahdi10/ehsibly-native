@@ -1,7 +1,7 @@
 import {View, TouchableOpacity, StyleSheet} from 'react-native';
 import {useTranslation} from 'react-i18next';
 import CustomText from './CustomText';
-import {COLORS} from '../constants/theme';
+import {COLORS, makeShadow} from '../constants/theme';
 
 // Maps raw backend document "type" strings to i18n label keys. Falls back to
 // rendering the raw type if a mapping isn't known yet — new document types
@@ -83,11 +83,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     padding: 12,
     marginBottom: 8,
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 1},
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
+    ...makeShadow({y: 1, blur: 4, opacity: 0.04}),
   },
   iconWrap: {
     width: 40,

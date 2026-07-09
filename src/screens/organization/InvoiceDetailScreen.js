@@ -44,7 +44,7 @@ import {
   NON_INVOICE_DOC_SOURCES,
   paymentDocTypesForBank,
 } from '../../constants/documentTypes';
-import {COLORS} from '../../constants/theme';
+import {COLORS, makeShadow} from '../../constants/theme';
 
 const TABS = {
   DOCUMENTS: 'documents',
@@ -779,11 +779,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
     marginBottom: 6,
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 1},
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
+    ...makeShadow({y: 1, blur: 4, opacity: 0.04}),
   },
 
   // ── Tabs (underline style)
@@ -816,11 +812,7 @@ const styles = StyleSheet.create({
   cardPolish: {
     borderWidth: 1,
     borderColor: COLORS.border,
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 1},
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
+    ...makeShadow({y: 1, blur: 4, opacity: 0.04}),
   },
   uploadSection: {marginBottom: 8},
   addOtherFileBtn: {marginBottom: 20},

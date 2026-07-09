@@ -1,7 +1,7 @@
 import {useContext} from 'react';
 import {TouchableOpacity, Text, StyleSheet} from 'react-native';
 import {LanguageContext} from '../../App';
-import {FONTS, tajawalFamilyForWeight} from '../constants/fonts';
+import {FONTS, tajawalStyleForWeight} from '../constants/fonts';
 
 // Compact single-tap switcher for screens with no room for Settings' full
 // language list (Login, Register, the unsupported-org-type screen) — shows
@@ -14,14 +14,14 @@ const LanguageToggle = ({style}) => {
   const {currentLanguage, changeLanguage} = useContext(LanguageContext);
   const isArabic = currentLanguage === 'ar';
   const label = isArabic ? 'English' : 'العربية';
-  const fontFamily = isArabic ? FONTS.ENGLISH_DEFAULT : tajawalFamilyForWeight('600');
+  const fontStyle = isArabic ? {fontFamily: FONTS.ENGLISH_DEFAULT} : tajawalStyleForWeight('600');
 
   return (
     <TouchableOpacity
       style={[styles.button, style]}
       onPress={() => changeLanguage(isArabic ? 'en' : 'ar')}
       activeOpacity={0.7}>
-      <Text style={[styles.text, {fontFamily}]}>{label}</Text>
+      <Text style={[styles.text, fontStyle]}>{label}</Text>
     </TouchableOpacity>
   );
 };

@@ -110,3 +110,18 @@ export const tajawalFamilyForWeight = weight => {
       return FONTS.DEFAULT;
   }
 };
+
+// The complete style for Tajawal at a given weight — not just the family.
+// Resolving the right file (above) isn't enough when the caller's own style
+// keeps a numeric fontWeight: on Android that leftover weight makes the
+// exact-filename family hunt for a variant file that doesn't exist
+// ("Tajawal-ExtraBold at weight 800") and silently fall back to the system
+// font, even though the resolved file alone would have rendered fine. So on
+// Android the weight is neutralized — the file IS the weight. iOS keeps the
+// caller's fontWeight untouched because there the shared "Tajawal" family
+// needs it to select a weight at all. Appending this AFTER the caller's
+// style in a style array makes the neutralization win.
+export const tajawalStyleForWeight = weight => ({
+  fontFamily: tajawalFamilyForWeight(weight),
+  ...(Platform.OS === 'android' ? {fontWeight: 'normal'} : null),
+});

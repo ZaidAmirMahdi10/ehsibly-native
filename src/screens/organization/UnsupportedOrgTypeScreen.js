@@ -9,7 +9,7 @@ import PrimaryButton from '../../components/PrimaryButton';
 import LanguageToggle from '../../components/LanguageToggle';
 import {useAuth} from '../../context/AuthContext';
 import {useAlert} from '../../context/AlertContext';
-import {COLORS} from '../../constants/theme';
+import {COLORS, makeShadow} from '../../constants/theme';
 
 // One bouncing dot in the "building something great…" loader row. Each dot
 // runs its own loop, started `delay` ms apart, so they ripple left to right
@@ -236,11 +236,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: COLORS.primary,
-    shadowOffset: {width: 0, height: 8},
-    shadowOpacity: 0.22,
-    shadowRadius: 16,
-    elevation: 8,
+    ...makeShadow({y: 8, blur: 16, color: COLORS.primary, opacity: 0.22}),
   },
   logo: {width: 66, height: 66},
   card: {
@@ -251,11 +247,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingBottom: 28,
     alignItems: 'center',
-    shadowColor: COLORS.primaryDark,
-    shadowOffset: {width: 0, height: 12},
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    elevation: 6,
+    ...makeShadow({y: 12, blur: 24, color: COLORS.primaryDark, opacity: 0.12}),
   },
   title: {fontSize: 22, color: COLORS.text, marginBottom: 10, lineHeight: 28},
   message: {fontSize: 14, color: COLORS.textMuted, lineHeight: 20, marginBottom: 20},

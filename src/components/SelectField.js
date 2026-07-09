@@ -18,6 +18,7 @@ const SelectField = ({
   getLabel = String,
   getKey = String,
   disabled = false,
+  style,
 }) => {
   const {currentDirection} = useContext(LanguageContext);
   const isRTL = currentDirection === 'rtl';
@@ -25,7 +26,7 @@ const SelectField = ({
   const selectedLabel = value != null ? getLabel(value) : null;
 
   return (
-    <View style={styles.group}>
+    <View style={[styles.group, style]}>
       {label ? (
         <CustomText style={styles.label}>
           {label}

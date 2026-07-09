@@ -17,7 +17,7 @@ import {useNavigation} from '@react-navigation/native';
 
 import {LanguageContext} from '../../../App';
 import {useAuth} from '../../context/AuthContext';
-import {tajawalFamilyForWeight} from '../../constants/fonts';
+import {tajawalStyleForWeight} from '../../constants/fonts';
 import {COLORS, CARD_SHADOW, PRIMARY_SHADOW} from '../../constants/theme';
 import StatusBadge from '../../components/StatusBadge';
 import ListEmptyState from '../../components/ListEmptyState';
@@ -46,7 +46,7 @@ const HomeScreen = () => {
       return null;
     }
     const weight = StyleSheet.flatten(stylesToCheck)?.fontWeight;
-    return {fontFamily: tajawalFamilyForWeight(weight)};
+    return tajawalStyleForWeight(weight);
   };
 
   const [search, setSearch] = useState('');
