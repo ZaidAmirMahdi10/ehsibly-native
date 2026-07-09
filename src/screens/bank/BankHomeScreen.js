@@ -9,9 +9,6 @@ import {
   Easing,
   StatusBar,
   FlatList,
-  LayoutAnimation,
-  Platform,
-  UIManager,
   RefreshControl,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
@@ -55,10 +52,6 @@ const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
-
 const CATEGORY_STYLES = {
   awaiting: {tagBg: '#fff3d6', tagText: '#a6740a', labelKey: 'bankHomeAwaitingYou'},
   inProgress: {tagBg: '#e3f2fd', tagText: '#1976d2', labelKey: 'bankHomeInProgress'},
@@ -97,6 +90,14 @@ const FILTER_TO_PAYMENTS_STATUS = {
 // getBankMultiContainersInvoices) rather than the web frontend's
 // per-role getPaymentStatusBadge cascade, since this card shows one
 // overall category badge, not a role-specific one.
+//
+// Verified 2026-07-09 against bankAndSubcompanyController.js directly: the
+// three server-backed buckets below match its paymentsStatus filter
+// branches line-for-line (unstartedPayments / completed / rejected). Note
+// the bank endpoint does NOT return the merchant list's server-computed
+// generalBadgeStatus field at all — that DTO field exists only on
+// filteredMultiContainerInvoices — so re-deriving the bucket here is the
+// only option, not a shortcut.
 const categorizeApplication = item => {
   const latest = item.latestPaymentDetail;
   if (!latest) {
@@ -242,6 +243,14 @@ const ApplicationCard = ({app, isRTL, isExpanded, onToggle, index}) => {
 
   const entrance = useRef(new Animated.Value(0)).current;
   const pressScale = useRef(new Animated.Value(1)).current;
+  // Pure Animated expand/collapse (maxHeight + opacity), NOT LayoutAnimation:
+  // this screen hosts react-native-svg (the hero ring, lucide icons), and
+  // LayoutAnimation mutations over svg-containing subtrees are the exact
+  // native Fabric SIGABRT (stable_sort) crash the Reports tab already hit —
+  // see BankReportsScreen.js's ChartCard for the same pattern and history.
+  // JS driver on purpose: maxHeight isn't native-drivable, and this value
+  // stays on its own node so it never mixes drivers with entrance/pressScale.
+  const expandAnim = useRef(new Animated.Value(isExpanded ? 1 : 0)).current;
 
   useEffect(() => {
     Animated.timing(entrance, {
@@ -252,6 +261,15 @@ const ApplicationCard = ({app, isRTL, isExpanded, onToggle, index}) => {
       useNativeDriver: true,
     }).start();
   }, [entrance, index]);
+
+  useEffect(() => {
+    Animated.timing(expandAnim, {
+      toValue: isExpanded ? 1 : 0,
+      duration: 240,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [expandAnim, isExpanded]);
 
   const handlePressIn = () => {
     Animated.spring(pressScale, {toValue: 0.97, useNativeDriver: true, speed: 40, bounciness: 0}).start();
@@ -304,13 +322,18 @@ const ApplicationCard = ({app, isRTL, isExpanded, onToggle, index}) => {
           </View>
         </View>
 
-        {isExpanded ? (
+        <Animated.View
+          style={{
+            maxHeight: expandAnim.interpolate({inputRange: [0, 1], outputRange: [0, 240]}),
+            opacity: expandAnim,
+            overflow: 'hidden',
+          }}>
           <View style={styles.roleBreakdown}>
             <RoleRow label={t('creator')} person={app.creator} isRTL={isRTL} />
             <RoleRow label={t('bankAuditorLabel')} person={app.auditor} isRTL={isRTL} />
             <RoleRow label={t('bankHomeExecutorLabel')} person={app.executor} isRTL={isRTL} />
           </View>
-        ) : null}
+        </Animated.View>
       </TouchableOpacity>
     </Animated.View>
   );
@@ -622,7 +645,6 @@ const BankHomeScreen = () => {
   });
 
   const toggleExpand = id => {
-    LayoutAnimation.configureNext(LayoutAnimation.create(240, 'easeInEaseOut', 'opacity'));
     setExpandedId(prev => (prev === id ? null : id));
   };
 
