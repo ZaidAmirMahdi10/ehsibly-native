@@ -3,7 +3,7 @@ import {Image} from 'react-native';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useTranslation} from 'react-i18next';
-import {FileText} from 'lucide-react-native';
+import {FileText, ChartBar} from 'lucide-react-native';
 
 import {LanguageContext} from '../../App';
 import {useAuth} from '../context/AuthContext';
@@ -11,6 +11,7 @@ import CustomText from '../components/CustomText';
 
 import HomeScreen from '../screens/organization/HomeScreen';
 import BankHomeScreen from '../screens/bank/BankHomeScreen';
+import BankReportsScreen from '../screens/bank/BankReportsScreen';
 import ProfileScreen from '../screens/general/ProfileScreen';
 import SettingsScreen from '../screens/general/SettingsScreen';
 import TempScreen from '../screens/general/HomeScreenOld';
@@ -113,19 +114,30 @@ export default function AppTabs() {
         }}
       />
 
-      <Tab.Screen
-        name={t('temp')}
-        component={TempScreen}
-        options={{
-          tabBarLabel: renderLabel(t('temp')),
-          tabBarIcon: ({color}) => (
-            <Image
-              style={{tintColor: color, width: 28, height: 28}}
-              source={require('../assets/bottom-tab-icons/menu.png')}
-            />
-          ),
-        }}
-      />
+      {isBankOrg ? (
+        <Tab.Screen
+          name={t('bankReportsTab')}
+          component={BankReportsScreen}
+          options={{
+            tabBarLabel: renderLabel(t('bankReportsTab')),
+            tabBarIcon: ({color}) => <ChartBar size={26} color={color} />,
+          }}
+        />
+      ) : (
+        <Tab.Screen
+          name={t('temp')}
+          component={TempScreen}
+          options={{
+            tabBarLabel: renderLabel(t('temp')),
+            tabBarIcon: ({color}) => (
+              <Image
+                style={{tintColor: color, width: 28, height: 28}}
+                source={require('../assets/bottom-tab-icons/menu.png')}
+              />
+            ),
+          }}
+        />
+      )}
     </Tab.Navigator>
   );
 }

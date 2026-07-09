@@ -1,4 +1,4 @@
-import React, {useContext, useEffect, useRef, useState} from 'react';
+import React, {useCallback, useContext, useEffect, useRef, useState} from 'react';
 import {
   View,
   Text,
@@ -12,9 +12,11 @@ import {
   LayoutAnimation,
   Platform,
   UIManager,
+  RefreshControl,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useTranslation} from 'react-i18next';
+import {useNavigation} from '@react-navigation/native';
 import Svg, {Circle} from 'react-native-svg';
 import {SlidersHorizontal, CheckCircle2, XCircle, Layers, CircleDashed} from 'lucide-react-native';
 
@@ -23,19 +25,27 @@ import {useAuth} from '../../context/AuthContext';
 import CustomText from '../../components/CustomText';
 import SearchInput from '../../components/SearchInput';
 import SelectField from '../../components/SelectField';
-import {tajawalFamilyForWeight} from '../../constants/fonts';
-import {COLORS, PRIMARY_SHADOW} from '../../constants/theme';
+import ErrorState from '../../components/ErrorState';
+import ListEmptyState from '../../components/ListEmptyState';
+import LoadingState from '../../components/LoadingState';
+import {tajawalStyleForWeight} from '../../constants/fonts';
+import {COLORS, PRIMARY_SHADOW, CARD_SHADOW} from '../../constants/theme';
+import {getBankApplications} from '../../services/bank/bankApplications';
 
 // A bank-admin-focused home screen, styled after the real HomeScreen.js's
 // look (plain logo header, standalone shadowed collapsing card, card-based
 // list) rather than a literal port of the web's Bank Applications table —
 // see BankApplicationsScreen.js for that literal recreation, kept as-is.
 // See BankHomeScreenOld.js for the pre-"rich redesign" snapshot of this file.
-// Static preview data — see BankApplicationsScreen.js's header comment for
-// why this isn't wired to the real bank backend.
+// Wired to the real /bankAndSubcompany/getBankMultiContainersInvoices
+// endpoint — see services/bank/bankApplications.js and the
+// categorizeApplication/mapRoleStatus/mapInvoice helpers below for how the
+// backend's three-role (creator/auditor/executor) status matrix collapses
+// into this card's single overall category + per-role badges.
 const CARD_HEIGHT = 244;
 const CARD_COLLAPSED_HEIGHT = 64;
 const HEADER_HEIGHT = 60;
+const PAGE_LIMIT = 20;
 
 const RING_SIZE = 84;
 const RING_SIZE_COLLAPSED = 34;
@@ -71,92 +81,80 @@ const FILTER_OPTIONS = [
   {value: 'rejected', labelKey: CATEGORY_STYLES.rejected.labelKey},
 ];
 
-const MOCK_APPLICATIONS = [
-  {
-    id: '1',
-    invoiceNumber: 'INV-2026-00871',
-    companyName: 'Al-Amal Textiles Co.',
-    date: '2026-07-03',
-    amount: '8,000.00',
-    currency: 'USD',
-    category: 'awaiting',
-    creator: {name: 'Ahmed Kareem', status: 'approved'},
-    auditor: {name: 'Zainab Fadhil', status: 'pending'},
-    executor: {name: null, status: 'notStarted'},
+// The backend has a direct paymentsStatus filter for these three buckets
+// (confirmed against bankAndSubcompanyController.js's non-executor branch),
+// so those are done server-side for accurate pagination/counts. There's no
+// equivalent "in progress" bucket server-side — that filter is applied
+// client-side below via categorizeApplication, against whatever page is
+// currently loaded.
+const FILTER_TO_PAYMENTS_STATUS = {
+  awaiting: 'unstartedPayments',
+  completed: 'completed',
+  rejected: 'rejected',
+};
+
+// Mirrors the backend's own bucketing (see the non-executor branch of
+// getBankMultiContainersInvoices) rather than the web frontend's
+// per-role getPaymentStatusBadge cascade, since this card shows one
+// overall category badge, not a role-specific one.
+const categorizeApplication = item => {
+  const latest = item.latestPaymentDetail;
+  if (!latest) {
+    return 'awaiting';
+  }
+  if (latest.creatorStatus === 'REJECTED' || latest.auditorStatus === 'REJECTED') {
+    return 'rejected';
+  }
+  const totalPaid = item.totalPaid || 0;
+  if (item.completedFullPyament || totalPaid >= item.amountForSupplier) {
+    return 'completed';
+  }
+  if (
+    (latest.creatorStatus === 'NOT_STARTED' && latest.creatorId === null) ||
+    (latest.auditorStatus === 'NOT_STARTED' && latest.auditorId === null)
+  ) {
+    return 'awaiting';
+  }
+  return 'inProgress';
+};
+
+const ROLE_STATUS_MAP = {
+  NOT_STARTED: 'notStarted',
+  NOT_EXECUTED: 'notStarted',
+  PENDING: 'pending',
+  ACCEPTED: 'approved',
+  EXECUTED: 'approved',
+  REJECTED: 'rejected',
+};
+const mapRoleStatus = status => ROLE_STATUS_MAP[status] || 'notStarted';
+
+// The role NAME (who) comes from bankCreator/bankAuditor/bankExecutor
+// (the invoice's assigned people); the role STATUS comes from
+// latestPaymentDetail's own creatorStatus/auditorStatus/executorStatus
+// (the current payment's progress) — these are two different things on
+// the real API that both feed the same RoleRow here.
+const mapInvoice = item => ({
+  id: item.id,
+  invoiceNumber: item.invoiceNumber || '-',
+  companyName: item.subCompany?.name,
+  companyNameInAr: item.subCompany?.nameInAr,
+  date: item.date ? item.date.split('T')[0] : '',
+  amount: item.amountForSupplier != null ? item.amountForSupplier.toLocaleString() : '-',
+  currency: item.currency || '',
+  category: categorizeApplication(item),
+  creator: {
+    name: item.bankCreator?.name || null,
+    status: mapRoleStatus(item.latestPaymentDetail?.creatorStatus),
   },
-  {
-    id: '2',
-    invoiceNumber: 'INV-2026-00866',
-    companyName: 'Nineveh Steel Group',
-    date: '2026-07-02',
-    amount: '14,250.00',
-    currency: 'USD',
-    category: 'awaiting',
-    creator: {name: 'Mustafa Adnan', status: 'approved'},
-    auditor: {name: null, status: 'notStarted'},
-    executor: {name: null, status: 'notStarted'},
+  auditor: {
+    name: item.bankAuditor?.name || null,
+    status: mapRoleStatus(item.latestPaymentDetail?.auditorStatus),
   },
-  {
-    id: '3',
-    invoiceNumber: 'INV-2026-00854',
-    companyName: 'Souq Al-Rasheed Ltd.',
-    date: '2026-06-29',
-    amount: '12,000.00',
-    currency: 'USD',
-    category: 'completed',
-    creator: {name: 'Mustafa Adnan', status: 'approved'},
-    auditor: {name: 'Huda Salim', status: 'approved'},
-    executor: {name: 'Karrar Yousif', status: 'approved'},
+  executor: {
+    name: item.bankExecutor?.name || null,
+    status: mapRoleStatus(item.latestPaymentDetail?.executorStatus),
   },
-  {
-    id: '4',
-    invoiceNumber: 'INV-2026-00849',
-    companyName: 'Basra Marble & Stone',
-    date: '2026-06-27',
-    amount: '5,400.00',
-    currency: 'USD',
-    category: 'inProgress',
-    creator: {name: 'Ahmed Kareem', status: 'approved'},
-    auditor: {name: 'Zainab Fadhil', status: 'pending'},
-    executor: {name: null, status: 'notStarted'},
-  },
-  {
-    id: '5',
-    invoiceNumber: 'INV-2026-00832',
-    companyName: 'Zhejiang Tailong Trading',
-    date: '2026-06-25',
-    amount: '9,900.00',
-    currency: 'USD',
-    category: 'rejected',
-    creator: {name: 'Ahmed Kareem', status: 'rejected'},
-    auditor: {name: null, status: 'notStarted'},
-    executor: {name: null, status: 'notStarted'},
-  },
-  {
-    id: '6',
-    invoiceNumber: 'INV-2026-00821',
-    companyName: 'Shandong Heavy Industries',
-    date: '2026-06-24',
-    amount: '21,000.00',
-    currency: 'USD',
-    category: 'completed',
-    creator: {name: 'Mustafa Adnan', status: 'approved'},
-    auditor: {name: 'Huda Salim', status: 'approved'},
-    executor: {name: 'Karrar Yousif', status: 'approved'},
-  },
-  {
-    id: '7',
-    invoiceNumber: 'INV-2026-00879',
-    companyName: 'Basra Marble & Stone',
-    date: '2026-07-04',
-    amount: '3,150.00',
-    currency: 'USD',
-    category: 'awaiting',
-    creator: {name: null, status: 'notStarted'},
-    auditor: {name: null, status: 'notStarted'},
-    executor: {name: null, status: 'notStarted'},
-  },
-];
+});
 
 // One bouncing/pulsing "live" dot beside the hero label — a small ambient
 // cue that this number is actively monitored, not a static snapshot.
@@ -194,8 +192,8 @@ const LiveDot = () => {
 const HeroChip = ({Icon, color, label, value, isRTL}) => {
   // Plain Text (not CustomText) throughout the hero card, so it needs its
   // own Arabic font resolution here too — see the `af()` comment above.
-  const valueFont = isRTL ? {fontFamily: tajawalFamilyForWeight('800')} : null;
-  const labelFont = isRTL ? {fontFamily: tajawalFamilyForWeight('600')} : null;
+  const valueFont = isRTL ? tajawalStyleForWeight('800') : null;
+  const labelFont = isRTL ? tajawalStyleForWeight('600') : null;
 
   return (
     <View style={[styles.heroChip, isRTL && styles.heroChipRTL]}>
@@ -240,6 +238,7 @@ const RoleRow = ({label, person, isRTL}) => (
 const ApplicationCard = ({app, isRTL, isExpanded, onToggle, index}) => {
   const {t} = useTranslation();
   const cat = CATEGORY_STYLES[app.category];
+  const companyName = (isRTL ? app.companyNameInAr || app.companyName : app.companyName || app.companyNameInAr) || '-';
 
   const entrance = useRef(new Animated.Value(0)).current;
   const pressScale = useRef(new Animated.Value(1)).current;
@@ -281,8 +280,8 @@ const ApplicationCard = ({app, isRTL, isExpanded, onToggle, index}) => {
             <CustomText style={styles.invoiceNumber} paddingTop={0}>
               {app.invoiceNumber}
             </CustomText>
-            <CustomText style={styles.companyName} paddingTop={0}>
-              {app.companyName}
+            <CustomText style={styles.companyName} paddingTop={0} numberOfLines={1}>
+              {companyName}
             </CustomText>
             <CustomText style={styles.dateText} paddingTop={0}>
               {app.date}
@@ -321,6 +320,7 @@ const BankHomeScreen = () => {
   const {t} = useTranslation();
   const {session} = useAuth();
   const {currentDirection} = useContext(LanguageContext);
+  const navigation = useNavigation();
   const isRTL = currentDirection === 'rtl';
 
   // Mirrors HomeScreen.js's own greeting logic: an "orgUser" login is an
@@ -330,11 +330,172 @@ const BankHomeScreen = () => {
     session?.userType === 'orgUser'
       ? session?.organization?.username || session?.organization?.name
       : session?.organization?.name;
+  const userRole = session?.organization?.role;
 
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
   const [filterMode, setFilterMode] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
+
+  const [applications, setApplications] = useState([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Accurate org-wide counts fetched separately from the list itself
+  // (limit: 1 each, reading only .totalInvoices) — computing these from
+  // just the currently-loaded page would undercount as soon as pagination
+  // or a filter narrows what's actually fetched. notStartedCount is the
+  // one exception: there's no server-side bucket for "creator specifically
+  // hasn't started" (only the broader "awaiting" bucket, which also
+  // includes auditor-not-started), so it's derived from whatever page is
+  // currently loaded and is a page-scoped approximation, not a global count.
+  const [heroStats, setHeroStats] = useState({
+    awaitingCount: 0,
+    completedCount: 0,
+    rejectedCount: 0,
+    totalCount: 0,
+  });
+
+  const abortControllerRef = useRef(null);
+
+  const fetchApplications = useCallback(
+    async ({targetPage = 1, query = '', filter = activeFilter, append = false} = {}) => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
+      try {
+        setError(null);
+        const params = {
+          type: 'invoiceNumber',
+          page: targetPage,
+          limit: PAGE_LIMIT,
+          userRole,
+          includeCompleted: true,
+          includeRejected: true,
+        };
+        if (query) {
+          params.query = query;
+        }
+        const paymentsStatus = FILTER_TO_PAYMENTS_STATUS[filter];
+        if (paymentsStatus) {
+          params.paymentsStatus = paymentsStatus;
+        }
+
+        const data = await getBankApplications({...params, signal: controller.signal});
+        let mapped = (data?.invoices || []).map(mapInvoice);
+        // "In progress" has no server-side bucket — filter this page
+        // client-side against the same categorization the badge itself uses.
+        if (filter === 'inProgress') {
+          mapped = mapped.filter(app => app.category === 'inProgress');
+        }
+
+        setApplications(prev => (append ? [...prev, ...mapped] : mapped));
+        setTotalPages(data?.totalPages || 1);
+        setPage(targetPage);
+      } catch (err) {
+        if (controller.signal.aborted) {
+          return;
+        }
+        setError(t('genericErrorMessage'));
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+          setIsRefreshing(false);
+          setIsLoadingMore(false);
+        }
+      }
+    },
+    [activeFilter, userRole, t],
+  );
+
+  const fetchHeroStats = useCallback(async () => {
+    try {
+      const [totalRes, awaitingRes, completedRes, rejectedRes] = await Promise.all([
+        getBankApplications({limit: 1, userRole, includeCompleted: true, includeRejected: true}),
+        getBankApplications({limit: 1, userRole, paymentsStatus: 'unstartedPayments'}),
+        getBankApplications({limit: 1, userRole, paymentsStatus: 'completed'}),
+        getBankApplications({limit: 1, userRole, paymentsStatus: 'rejected'}),
+      ]);
+      setHeroStats({
+        totalCount: totalRes?.totalInvoices || 0,
+        awaitingCount: awaitingRes?.totalInvoices || 0,
+        completedCount: completedRes?.totalInvoices || 0,
+        rejectedCount: rejectedRes?.totalInvoices || 0,
+      });
+    } catch (err) {
+      // Hero stats are a secondary summary — a failure here shouldn't
+      // block the actual applications list from rendering.
+    }
+  }, [userRole]);
+
+  useEffect(() => {
+    (async () => {
+      setIsLoading(true);
+      await Promise.all([fetchApplications({targetPage: 1}), fetchHeroStats()]);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Re-fetch whenever this tab regains focus, same reasoning as
+  // HomeScreen.js's own focus listener.
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      fetchApplications({targetPage: 1, query: search});
+      fetchHeroStats();
+    });
+    return unsubscribe;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigation]);
+
+  // Debounced live search, same pattern as HomeScreen.js.
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    const timeout = setTimeout(() => {
+      fetchApplications({targetPage: 1, query: search});
+    }, 400);
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
+
+  // Re-fetch when the active filter changes (skips the very first mount,
+  // which the effect above already covers).
+  const isFirstFilterRender = useRef(true);
+  useEffect(() => {
+    if (isFirstFilterRender.current) {
+      isFirstFilterRender.current = false;
+      return;
+    }
+    setIsLoading(true);
+    fetchApplications({targetPage: 1, query: search, filter: activeFilter});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeFilter]);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await Promise.all([
+      fetchApplications({targetPage: 1, query: search}),
+      fetchHeroStats(),
+    ]);
+  };
+
+  const handleLoadMore = () => {
+    if (isLoadingMore || isLoading || page >= totalPages) {
+      return;
+    }
+    setIsLoadingMore(true);
+    fetchApplications({targetPage: page + 1, query: search, append: true});
+  };
 
   // Collapse is a discrete two-state transition (collapseAnim: 0 expanded,
   // 1 collapsed) driven by crossing a scroll threshold, NOT a continuous
@@ -421,19 +582,16 @@ const BankHomeScreen = () => {
       return null;
     }
     const weight = StyleSheet.flatten(stylesToCheck)?.fontWeight;
-    return {fontFamily: tajawalFamilyForWeight(weight)};
+    return tajawalStyleForWeight(weight);
   };
 
-  const awaitingCount = MOCK_APPLICATIONS.filter(a => a.category === 'awaiting').length;
-  const completedTodayCount = MOCK_APPLICATIONS.filter(a => a.category === 'completed').length;
-  const rejectedTodayCount = MOCK_APPLICATIONS.filter(a => a.category === 'rejected').length;
-  const totalCount = MOCK_APPLICATIONS.length;
-  const notStartedCount = MOCK_APPLICATIONS.filter(a => a.creator.status === 'notStarted').length;
+  const {awaitingCount, completedCount: completedTodayCount, rejectedCount: rejectedTodayCount, totalCount} = heroStats;
+  const notStartedCount = applications.filter(a => a.creator.status === 'notStarted').length;
   const completionPercent = totalCount > 0 ? Math.round((completedTodayCount / totalCount) * 100) : 0;
 
   // Animated count-up for the hero number and the progress ring's sweep —
-  // both driven once on mount so the card feels alive rather than a static
-  // snapshot the instant it appears.
+  // replays whenever the real awaiting/completion numbers actually change
+  // (e.g. once the initial fetch resolves after mount), not just once.
   const countAnim = useRef(new Animated.Value(0)).current;
   const ringAnim = useRef(new Animated.Value(0)).current;
   const [displayCount, setDisplayCount] = useState(0);
@@ -455,22 +613,12 @@ const BankHomeScreen = () => {
     }).start();
     return () => countAnim.removeListener(listenerId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [awaitingCount, completionPercent]);
 
   const ringStrokeDashoffset = ringAnim.interpolate({
     inputRange: [0, 100],
     outputRange: [RING_CIRCUMFERENCE, 0],
     extrapolate: 'clamp',
-  });
-
-  const filtered = MOCK_APPLICATIONS.filter(app => {
-    if (activeFilter !== 'all' && app.category !== activeFilter) {
-      return false;
-    }
-    if (search && !app.invoiceNumber.toLowerCase().includes(search.toLowerCase())) {
-      return false;
-    }
-    return true;
   });
 
   const toggleExpand = id => {
@@ -689,29 +837,38 @@ const BankHomeScreen = () => {
 
       {renderHeroSection()}
 
-      <FlatList
-        data={filtered}
-        keyExtractor={item => item.id}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        ItemSeparatorComponent={() => <View style={{height: 10}} />}
-        ListEmptyComponent={
-          <CustomText center style={styles.emptyText}>
-            {t('bankNoApplicationsFound')}
-          </CustomText>
-        }
-        onScroll={handleScroll}
-        scrollEventThrottle={16}
-        renderItem={({item, index}) => (
-          <ApplicationCard
-            app={item}
-            index={index}
-            isRTL={isRTL}
-            isExpanded={expandedId === item.id}
-            onToggle={() => toggleExpand(item.id)}
-          />
-        )}
-      />
+      {error ? (
+        <ErrorState message={error} onRetry={() => fetchApplications({targetPage: 1, query: search})} />
+      ) : isLoading ? (
+        <LoadingState />
+      ) : (
+        <FlatList
+          data={applications}
+          keyExtractor={item => item.id}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          ItemSeparatorComponent={() => <View style={{height: 10}} />}
+          ListEmptyComponent={
+            <ListEmptyState titleKey="bankNoApplicationsFound" subtitleKey="tryDifferentSearch" />
+          }
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          refreshControl={
+            <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />
+          }
+          onEndReachedThreshold={0.4}
+          onEndReached={handleLoadMore}
+          renderItem={({item, index}) => (
+            <ApplicationCard
+              app={item}
+              index={index}
+              isRTL={isRTL}
+              isExpanded={expandedId === item.id}
+              onToggle={() => toggleExpand(item.id)}
+            />
+          )}
+        />
+      )}
     </SafeAreaView>
   );
 };
@@ -749,7 +906,7 @@ const styles = StyleSheet.create({
   },
   avatarText: {color: '#fff', fontWeight: '700', fontSize: 13},
 
-  listContent: {paddingHorizontal: 16, paddingBottom: 30},
+  listContent: {paddingHorizontal: 16, paddingBottom: 30, flexGrow: 1},
 
   heroCard: {
     marginHorizontal: 16,
@@ -767,15 +924,20 @@ const styles = StyleSheet.create({
   liveDotWrap: {width: 8, height: 8, alignItems: 'center', justifyContent: 'center'},
   liveDotRing: {position: 'absolute', width: 8, height: 8, borderRadius: 4, backgroundColor: '#4ade80'},
   liveDotCore: {width: 6, height: 6, borderRadius: 3, backgroundColor: '#4ade80'},
+  // includeFontPadding: Android-only (no-op on iOS). These are plain Text
+  // nodes (not CustomText), so nothing pins their line boxes — Android's
+  // default font padding on Tajawal's tall metrics inflates every line and
+  // overflows the hero's fixed CARD_HEIGHT, clipping the bottom chip row.
   heroLabel: {
     color: COLORS.accent,
     fontSize: 11,
     fontWeight: '600',
     letterSpacing: 1.2,
     textTransform: 'uppercase',
+    includeFontPadding: false,
   },
-  heroNumber: {color: '#fff', fontSize: 40, fontWeight: '800', letterSpacing: -1.2, marginTop: 6},
-  heroTrendText: {color: 'rgba(255,255,255,0.65)', fontSize: 12, fontWeight: '600'},
+  heroNumber: {color: '#fff', fontSize: 40, fontWeight: '800', letterSpacing: -1.2, marginTop: 6, includeFontPadding: false},
+  heroTrendText: {color: 'rgba(255,255,255,0.65)', fontSize: 12, fontWeight: '600', includeFontPadding: false},
   heroRingWrap: {width: RING_SIZE, height: RING_SIZE, alignItems: 'center', justifyContent: 'center'},
   heroRingCenter: {
     position: 'absolute',
@@ -786,7 +948,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  heroRingText: {color: '#fff', fontSize: 15, fontWeight: '800'},
+  heroRingText: {color: '#fff', fontSize: 15, fontWeight: '800', includeFontPadding: false},
 
   heroStatsGrid: {marginTop: 18, gap: 10},
   heroChipsRow: {flexDirection: 'row', gap: 10},
@@ -810,8 +972,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   heroChipTextRTL: {alignItems: 'flex-end'},
-  heroChipValue: {color: '#fff', fontSize: 14, fontWeight: '800'},
-  heroChipLabel: {color: 'rgba(255,255,255,0.6)', fontSize: 10, fontWeight: '600'},
+  heroChipValue: {color: '#fff', fontSize: 14, fontWeight: '800', includeFontPadding: false},
+  heroChipLabel: {color: 'rgba(255,255,255,0.6)', fontSize: 10, fontWeight: '600', includeFontPadding: false},
 
   searchFilterRow: {
     flexDirection: 'row',
@@ -845,19 +1007,13 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
 
-  emptyText: {marginTop: 30, fontSize: 13, color: COLORS.textMuted},
-
   card: {
     backgroundColor: COLORS.surface,
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
+    ...CARD_SHADOW,
   },
   cardTop: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'},
   cardTopRTL: {flexDirection: 'row-reverse'},
