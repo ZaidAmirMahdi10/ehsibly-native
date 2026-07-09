@@ -29,6 +29,7 @@ import ModalSheet from '../../components/ModalSheet';
 import {
   getInvoiceMainFiles,
   getInvoiceFileUrl,
+  getInvoiceById,
   getMultiContainerInvoices,
   updateInvoiceMainFiles,
   deleteInvoiceDoc,
@@ -122,7 +123,9 @@ const InvoiceDetailScreen = () => {
       const data = await getMultiContainerInvoices(params);
       const fresh = data?.invoices?.[0];
       if (fresh) {
-        setInvoice(fresh);
+        // The list endpoint's DTO deliberately omits notesForBank/bankStatus
+        // (raw columns) — keep the byId-fetched values instead of clobbering.
+        setInvoice(prev => ({...fresh, notesForBank: prev?.notesForBank, bankStatus: prev?.bankStatus}));
       }
     } catch (err) {
       // Non-fatal — the screen keeps showing the last known state.
@@ -161,6 +164,25 @@ const InvoiceDetailScreen = () => {
       setPaymentLoading(false);
     }
   };
+
+  // notesForBank isn't part of the list endpoint's hand-built DTO, so the
+  // route-param invoice never carries it — the byId endpoint returns the raw
+  // row (all scalars), same as the web app's ViewInvoice.
+  useEffect(() => {
+    (async () => {
+      try {
+        const full = await getInvoiceById(invoice.id);
+        if (full) {
+          // Both fields are raw columns the list endpoint's DTO omits:
+          // notesForBank for display, bankStatus for the Edit/Send gating.
+          setInvoice(prev => ({...prev, notesForBank: full.notesForBank, bankStatus: full.bankStatus}));
+        }
+      } catch (err) {
+        // Non-fatal: the note simply stays hidden if this lookup fails.
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     loadInvoiceDocs();
@@ -351,7 +373,47 @@ const InvoiceDetailScreen = () => {
     }
   };
 
-  const handleSendToBank = () => {
+  const handleSendToBank = async () => {
+    // Document-completeness gate (explicit product decision 2026-07-09: the
+    // stricter bayan-based set, deliberately broader than web
+    // ViewInvoice.js's validateDocuments):
+    //   - invoice-level: invoice + customsDeclaration always, plus
+    //     shippingPolicy + exitPermit when bayan is '03'
+    //     (thirdPartyContract stays optional)
+    //   - payment-level: every form slot the application bank defines
+    //     (the 5 Baghdad forms / 4 Mansur forms)
+    // Docs are re-fetched here so the check can't pass on stale local state
+    // (e.g. a doc deleted from the web app since this screen loaded).
+    let currentDocs = invoiceDocs;
+    let currentBayan = bayanNumber;
+    try {
+      const data = await getInvoiceMainFiles(invoice.id);
+      currentDocs = data?.data?.documents || [];
+      currentBayan = data?.data?.customsDeclrationNumber || bayanNumber;
+    } catch (err) {
+      // Network hiccup — fall back to the state already on screen rather
+      // than blocking the action outright.
+    }
+    const requiredInvoiceDocs = ['invoice', CUSTOMS_DECLARATION_TYPE];
+    if (currentBayan === BAYAN_NUMBER_REQUIRING_SHIPPING_DOCS) {
+      requiredInvoiceDocs.push(...SHIPPING_DOCS_FOR_BAYAN_03);
+    }
+    const requiredPaymentDocs = paymentDocTypesForBank(invoice.applicationBank?.nameWithNoSpace);
+    const missing = [
+      ...requiredInvoiceDocs.filter(type => !currentDocs.some(doc => doc.type === type)),
+      ...requiredPaymentDocs.filter(
+        type => !(paymentDetail?.MCIPaymentDocs || []).some(doc => doc.type === type),
+      ),
+    ];
+    if (missing.length > 0) {
+      const missingLabels = missing.map(type => `• ${t(DOC_LABEL_KEYS[type] || type)}`).join('\n');
+      showAlert(
+        t('sendToBankMissingDocsTitle'),
+        `${t('sendToBankMissingDocsMessage')}\n\n${missingLabels}`,
+      );
+      return;
+    }
+
     showAlert(t('sendToBankConfirmTitle'), t('sendToBankConfirmMessage'), [
       {text: t('cancel'), style: 'cancel'},
       {
@@ -425,6 +487,17 @@ const InvoiceDetailScreen = () => {
             </CustomText>
           </View>
         </View>
+
+        {invoice.notesForBank ? (
+          <View style={styles.notesForBankBox}>
+            <CustomText bold style={styles.notesForBankTitle}>
+              {t('notesForBankLabel')}
+            </CustomText>
+            <CustomText style={styles.notesForBankText} lineHeight={22}>
+              {invoice.notesForBank}
+            </CustomText>
+          </View>
+        ) : null}
       </View>
 
       <View style={[styles.tabBar, rowDirection]}>
@@ -642,8 +715,12 @@ const InvoiceDetailScreen = () => {
           />
 
           <View style={styles.actionsWrap}>
+            {/* Matches web ViewInvoice.js's canEditPayment: an invoice-level
+                bank rejection re-opens editing even when the payment's own
+                status isn't NOT_SENT/REJECTED. */}
             {paymentDetail.companyPaymentStatus === 'NOT_SENT' ||
-            paymentDetail.companyPaymentStatus === 'REJECTED' ? (
+            paymentDetail.companyPaymentStatus === 'REJECTED' ||
+            invoice.bankStatus === 'REJECTED' ? (
               <>
                 <PrimaryButton
                   title={t('editApplicationAction')}
@@ -783,6 +860,15 @@ const styles = StyleSheet.create({
   },
 
   // ── Tabs (underline style)
+  notesForBankBox: {
+    backgroundColor: COLORS.surfaceAlt,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 12,
+  },
+  notesForBankTitle: {fontSize: 12, color: COLORS.textMuted, marginBottom: 2},
+  notesForBankText: {fontSize: 13, color: COLORS.text},
+
   tabBar: {
     flexDirection: 'row',
     backgroundColor: COLORS.surface,

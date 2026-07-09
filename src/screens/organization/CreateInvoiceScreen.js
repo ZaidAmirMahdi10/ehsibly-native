@@ -13,7 +13,7 @@ import InfoBox from '../../components/InfoBox';
 import ModalSheet from '../../components/ModalSheet';
 import {useAuth} from '../../context/AuthContext';
 import {getSupplierBankAccounts} from '../../services/bankAccounts';
-import {createInvoice} from '../../services/invoices/multiContainerWithoutC';
+import {createInvoice, saveNotesForBank} from '../../services/invoices/multiContainerWithoutC';
 import {COLORS} from '../../constants/theme';
 
 const STEP_SUPPLIER = 1;
@@ -42,6 +42,11 @@ const CreateInvoiceScreen = () => {
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [amountForSupplier, setAmountForSupplier] = useState('');
   const [notes, setNotes] = useState('');
+  // Bank-visible notes — a separate backend column (notesForBank) from the
+  // internal `notes` above, matching the web app's "Notes For Bank" field.
+  // The create endpoint doesn't accept it, so it's saved with a follow-up
+  // addNotes call once the invoice exists.
+  const [notesForBank, setNotesForBank] = useState('');
 
   // Containers are entirely optional (matches the web app's
   // CreateNoCustomerInvoice — zero-or-more "Add container" entries, not a
@@ -97,7 +102,7 @@ const CreateInvoiceScreen = () => {
     setError(null);
     setIsSubmitting(true);
     try {
-      await createInvoice({
+      const created = await createInvoice({
         supplierId: supplier.id,
         subCompanyId: subCompany.id,
         organizationId: session?.organization?.id,
@@ -109,6 +114,17 @@ const CreateInvoiceScreen = () => {
         notes: notes.trim() || undefined,
         containers: containers.map(c => ({containerNumber: c.containerNumber})),
       });
+      const createdInvoiceId = created?.invoice?.id;
+      if (createdInvoiceId && notesForBank.trim()) {
+        try {
+          await saveNotesForBank(createdInvoiceId, notesForBank.trim());
+        } catch (notesErr) {
+          // Non-fatal: the invoice itself was created — surfacing this as a
+          // hard error would tempt a retry that duplicates the invoice. The
+          // note can still be added from the web app's invoice page.
+          console.warn('saveNotesForBank failed after invoice creation', notesErr);
+        }
+      }
       navigation.goBack();
     } catch (err) {
       setError(err?.response?.data?.message || t('genericErrorMessage'));
@@ -223,6 +239,17 @@ const CreateInvoiceScreen = () => {
             style={styles.notesInput}
           />
           <InfoBox text={t('notesNotVisibleToBankNote')} style={styles.infoNote} />
+
+          <FormField
+            label={t('notesForBankLabel')}
+            value={notesForBank}
+            onChangeText={setNotesForBank}
+            placeholder={t('notesForBankPlaceholder')}
+            multiline
+            numberOfLines={4}
+            style={styles.notesInput}
+          />
+          <InfoBox text={t('notesForBankVisibleNote')} style={styles.infoNote} />
 
           <CustomText bold style={styles.sectionTitle}>
             {t('containersTitle')}

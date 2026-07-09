@@ -7,7 +7,10 @@ const ListEmptyState = ({titleKey = 'noTransactionsFound', subtitleKey = 'tryDif
 
   return (
     <View style={styles.container}>
-      <CustomText center style={styles.icon}>
+      {/* lineHeight must be the explicit prop — CustomText's default (20)
+          clips a 32px glyph, and a lineHeight inside the style object loses
+          to the prop's default. */}
+      <CustomText center style={styles.icon} lineHeight={40}>
         📭
       </CustomText>
       <CustomText center bold style={styles.title}>

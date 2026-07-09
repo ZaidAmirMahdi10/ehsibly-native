@@ -80,3 +80,12 @@ export const createInvoice = async payload => {
   );
   return response.data;
 };
+
+// PUT — stores {notes} on the invoice's BANK-VISIBLE notesForBank column
+// (the web app's ViewInvoice "Notes For Bank" field / saveNotes service).
+// Deliberately separate from the create payload's `notes`, which stays
+// internal to the organization and is never shown to the bank.
+export const saveNotesForBank = async (invoiceId, notes) => {
+  const response = await apiClient.put(`${route}/addNotes/${invoiceId}`, {notes});
+  return response.data;
+};
