@@ -853,6 +853,24 @@ const BankHomeScreen = () => {
         if (filter === 'inProgress') {
           mapped = mapped.filter(app => app.category === 'inProgress');
         }
+        // Safety net over a backend gap in includeCompleted/includeRejected:
+        // its exclusion conditions only match a rejection/completion PAIRED
+        // with an invoice-level ACCEPTED/REJECTED status, so e.g. a payment
+        // rejected while the invoice is still NOT_STARTED sails through
+        // includeRejected=false (verified live: invoice 24000000008). Drop
+        // anything whose derived badge contradicts an applied hide switch so
+        // the list never shows a badge the user explicitly hid. Skipped when
+        // a status chip is active, matching the backend's own
+        // userIsFilteringByStatus bypass (an explicit chip wins over hides).
+        // Same page-thinning caveat as the inProgress filter above.
+        if (!FILTER_TO_PAYMENTS_STATUS[filter]) {
+          if (!advancedFilters.includeCompleted) {
+            mapped = mapped.filter(app => app.category !== 'completed');
+          }
+          if (!advancedFilters.includeRejected) {
+            mapped = mapped.filter(app => app.category !== 'rejected');
+          }
+        }
 
         setApplications(prev => (append ? [...prev, ...mapped] : mapped));
         setTotalPages(data?.totalPages || 1);
