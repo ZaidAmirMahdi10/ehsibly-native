@@ -357,7 +357,10 @@ const ApplicationCard = ({app, isRTL, isExpanded, onToggle, index}) => {
               <CustomText style={styles.invoiceNumber} paddingTop={0}>
                 {app.invoiceNumber}
               </CustomText>
-              <CustomText style={styles.companyName} paddingTop={0} numberOfLines={1}>
+              {/* Collapsed cards truncate long company names to keep rows
+                  uniform; expanding the card reveals the full name, letting
+                  the card grow as tall as the wrapped text needs. */}
+              <CustomText style={styles.companyName} paddingTop={0} numberOfLines={isExpanded ? undefined : 1}>
                 {companyName}
               </CustomText>
               <CustomText style={styles.dateText} paddingTop={0}>
