@@ -9,6 +9,7 @@ import {
   Easing,
   StatusBar,
   FlatList,
+  ScrollView,
   RefreshControl,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
@@ -22,12 +23,15 @@ import {useAuth} from '../../context/AuthContext';
 import CustomText from '../../components/CustomText';
 import SearchInput from '../../components/SearchInput';
 import SelectField from '../../components/SelectField';
+import FormField from '../../components/FormField';
+import PrimaryButton from '../../components/PrimaryButton';
 import ErrorState from '../../components/ErrorState';
 import ListEmptyState from '../../components/ListEmptyState';
 import LoadingState from '../../components/LoadingState';
+import {useAlert} from '../../context/AlertContext';
 import {tajawalStyleForWeight} from '../../constants/fonts';
 import {COLORS, PRIMARY_SHADOW, CARD_SHADOW} from '../../constants/theme';
-import {getBankApplications} from '../../services/bank/bankApplications';
+import {getBankApplications, getBankSubCompanies, getBankSuppliers} from '../../services/bank/bankApplications';
 
 // A bank-admin-focused home screen, styled after the real HomeScreen.js's
 // look (plain logo header, standalone shadowed collapsing card, card-based
@@ -85,6 +89,54 @@ const FILTER_TO_PAYMENTS_STATUS = {
   completed: 'completed',
   rejected: 'rejected',
 };
+
+// Advanced filters, mirroring the web dashboard's collapsible filter panel
+// (BanksInvoicesApplicationsFilters.jsx) and the backend's own query
+// contract: `type` picks ONE search dimension per request — a text search
+// (with `query`) or a date field (with startDate/endDate) — while
+// sender/receiver and the include-* switches are independent params.
+const SEARCH_TYPE_OPTIONS = [
+  {value: 'invoiceNumber', labelKey: 'invoiceNumberLabel'},
+  {value: 'transactionNum', labelKey: 'transactionNumber'},
+  {value: 'paymentAmount', labelKey: 'paymentAmount'},
+];
+const DATE_FIELD_OPTIONS = [
+  {value: null, labelKey: 'bankFiltersDateNone'},
+  {value: 'date', labelKey: 'bankFiltersInvoiceDate'},
+  {value: 'paymentsDate', labelKey: 'bankFiltersPaymentDate'},
+  {value: 'executionDate', labelKey: 'bankFiltersExecutionDate'},
+];
+// includeCompleted/includeRejected default ON to preserve this screen's
+// existing behavior (it always sent both as true before the panel existed).
+const DEFAULT_ADVANCED_FILTERS = {
+  searchType: 'invoiceNumber',
+  sender: null,
+  receiver: null,
+  dateField: null,
+  startDate: '',
+  endDate: '',
+  includeCompleted: true,
+  includeRejected: true,
+};
+const DATE_INPUT_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+const FilterCheckRow = ({label, checked, onToggle, isRTL}) => (
+  <TouchableOpacity
+    style={[styles.checkRow, isRTL && styles.checkRowRTL]}
+    activeOpacity={0.7}
+    onPress={onToggle}>
+    <View style={[styles.checkBox, checked && styles.checkBoxChecked]}>
+      {checked ? (
+        <CustomText style={styles.checkMark} paddingTop={0} lineHeight={16}>
+          ✓
+        </CustomText>
+      ) : null}
+    </View>
+    <CustomText style={styles.checkLabel} paddingTop={0}>
+      {label}
+    </CustomText>
+  </TouchableOpacity>
+);
 
 // Mirrors the backend's own bucketing (see the non-executor branch of
 // getBankMultiContainersInvoices) rather than the web frontend's
@@ -359,6 +411,58 @@ const BankHomeScreen = () => {
   const [activeFilter, setActiveFilter] = useState('all');
   const [filterMode, setFilterMode] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
+  const {showAlert} = useAlert();
+
+  // Applied vs. draft advanced filters: panel edits stage into the draft
+  // and only hit the network when تطبيق is pressed, matching the web
+  // panel's explicit search/apply flow.
+  const [advancedFilters, setAdvancedFilters] = useState(DEFAULT_ADVANCED_FILTERS);
+  const [draftFilters, setDraftFilters] = useState(DEFAULT_ADVANCED_FILTERS);
+  const [senderOptions, setSenderOptions] = useState([]);
+  const [receiverOptions, setReceiverOptions] = useState([]);
+  const filterOptionsLoadedRef = useRef(false);
+
+  const setDraft = patch => setDraftFilters(prev => ({...prev, ...patch}));
+
+  // Lazily fetch the sender/receiver dropdown data the first time the
+  // panel opens — both lists are org-wide and small enough to load once.
+  const loadFilterOptions = useCallback(async () => {
+    if (filterOptionsLoadedRef.current) {
+      return;
+    }
+    filterOptionsLoadedRef.current = true;
+    try {
+      const [subs, sups] = await Promise.all([
+        getBankSubCompanies({organizationName: session?.organization?.name}),
+        getBankSuppliers({}),
+      ]);
+      setSenderOptions(subs?.subCompanies || []);
+      setReceiverOptions(sups?.suppliers || []);
+    } catch (err) {
+      // Leave the dropdowns with just "All" — the rest of the panel still works.
+      filterOptionsLoadedRef.current = false;
+    }
+  }, [session?.organization?.name]);
+
+  const applyDraftFilters = () => {
+    for (const value of [draftFilters.startDate, draftFilters.endDate]) {
+      if (value && !DATE_INPUT_RE.test(value.trim())) {
+        showAlert(t('invalidDateFormatError'));
+        return;
+      }
+    }
+    setAdvancedFilters({
+      ...draftFilters,
+      startDate: draftFilters.startDate.trim(),
+      endDate: draftFilters.endDate.trim(),
+    });
+  };
+
+  const resetAdvancedFilters = () => {
+    setDraftFilters(DEFAULT_ADVANCED_FILTERS);
+    setAdvancedFilters(DEFAULT_ADVANCED_FILTERS);
+    setActiveFilter('all');
+  };
 
   const [applications, setApplications] = useState([]);
   const [page, setPage] = useState(1);
@@ -396,15 +500,35 @@ const BankHomeScreen = () => {
       try {
         setError(null);
         const params = {
-          type: 'invoiceNumber',
           page: targetPage,
           limit: PAGE_LIMIT,
           userRole,
-          includeCompleted: true,
-          includeRejected: true,
+          includeCompleted: advancedFilters.includeCompleted,
+          includeRejected: advancedFilters.includeRejected,
         };
-        if (query) {
-          params.query = query;
+        if (advancedFilters.sender?.id) {
+          params.subCompanyId = advancedFilters.sender.id;
+        }
+        if (advancedFilters.receiver?.id) {
+          params.supplierId = advancedFilters.receiver.id;
+        }
+        // The backend applies exactly one search dimension per request via
+        // `type`: an active date-range filter takes that slot (with
+        // startDate/endDate), otherwise the text search-by does (with query).
+        const dateActive = advancedFilters.dateField && (advancedFilters.startDate || advancedFilters.endDate);
+        if (dateActive) {
+          params.type = advancedFilters.dateField;
+          if (advancedFilters.startDate) {
+            params.startDate = advancedFilters.startDate;
+          }
+          if (advancedFilters.endDate) {
+            params.endDate = advancedFilters.endDate;
+          }
+        } else {
+          params.type = advancedFilters.searchType;
+          if (query) {
+            params.query = query;
+          }
         }
         const paymentsStatus = FILTER_TO_PAYMENTS_STATUS[filter];
         if (paymentsStatus) {
@@ -435,7 +559,7 @@ const BankHomeScreen = () => {
         }
       }
     },
-    [activeFilter, userRole, t],
+    [activeFilter, advancedFilters, userRole, t],
   );
 
   const fetchHeroStats = useCallback(async () => {
@@ -491,8 +615,8 @@ const BankHomeScreen = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
-  // Re-fetch when the active filter changes (skips the very first mount,
-  // which the effect above already covers).
+  // Re-fetch when the status bucket or the applied advanced filters change
+  // (skips the very first mount, which the initial-load effect covers).
   const isFirstFilterRender = useRef(true);
   useEffect(() => {
     if (isFirstFilterRender.current) {
@@ -502,7 +626,7 @@ const BankHomeScreen = () => {
     setIsLoading(true);
     fetchApplications({targetPage: 1, query: search, filter: activeFilter});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeFilter]);
+  }, [activeFilter, advancedFilters]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -539,6 +663,21 @@ const BankHomeScreen = () => {
   const EXPAND_SCROLL_THRESHOLD = 10;
   const collapseAnim = useRef(new Animated.Value(0)).current;
   const isCollapsedRef = useRef(false);
+  const lastScrollYRef = useRef(0);
+
+  const setHeroCollapsed = collapsed => {
+    if (isCollapsedRef.current === collapsed) {
+      return;
+    }
+    isCollapsedRef.current = collapsed;
+    Animated.timing(collapseAnim, {
+      toValue: collapsed ? 1 : 0,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  };
+
   const handleScroll = e => {
     const {contentOffset, contentSize, layoutMeasurement} = e.nativeEvent;
     // A list too short to really scroll past the threshold is still
@@ -549,16 +688,20 @@ const BankHomeScreen = () => {
     // like a flash/glitch). If there isn't enough real content to reach
     // the threshold through genuine scrolling, don't collapse at all.
     const maxScroll = contentSize.height - layoutMeasurement.height;
+    lastScrollYRef.current = contentOffset.y;
     if (maxScroll < COLLAPSE_SCROLL_THRESHOLD) {
+      return;
+    }
+    // The filter panel keeps the hero collapsed for room — don't let a
+    // top-of-list scroll event re-expand it underneath the open panel.
+    if (filterMode) {
       return;
     }
     const y = contentOffset.y;
     if (!isCollapsedRef.current && y > COLLAPSE_SCROLL_THRESHOLD) {
-      isCollapsedRef.current = true;
-      Animated.timing(collapseAnim, {toValue: 1, duration: 220, easing: Easing.out(Easing.cubic), useNativeDriver: false}).start();
+      setHeroCollapsed(true);
     } else if (isCollapsedRef.current && y < EXPAND_SCROLL_THRESHOLD) {
-      isCollapsedRef.current = false;
-      Animated.timing(collapseAnim, {toValue: 0, duration: 220, easing: Easing.out(Easing.cubic), useNativeDriver: false}).start();
+      setHeroCollapsed(false);
     }
   };
 
@@ -811,7 +954,21 @@ const BankHomeScreen = () => {
         </Animated.View>
         <TouchableOpacity
           activeOpacity={1}
-          onPress={() => setFilterMode(prev => !prev)}
+          onPress={() => {
+            setFilterMode(prev => {
+              const next = !prev;
+              if (next) {
+                setDraftFilters(advancedFilters);
+                loadFilterOptions();
+                // Fold the hero away so the panel has vertical room — this
+                // chrome sits above the list and can't scroll.
+                setHeroCollapsed(true);
+              } else {
+                setHeroCollapsed(lastScrollYRef.current > COLLAPSE_SCROLL_THRESHOLD);
+              }
+              return next;
+            });
+          }}
           onPressIn={handleFilterPressIn}
           onPressOut={handleFilterPressOut}>
           <Animated.View
@@ -829,6 +986,97 @@ const BankHomeScreen = () => {
           </Animated.View>
         </TouchableOpacity>
       </View>
+
+      {filterMode ? (
+        <View style={styles.filterPanel}>
+          {/* The hero/search/panel block sits ABOVE the FlatList as fixed
+              (non-scrolling) chrome, so the panel must scroll its own
+              content — otherwise it swallows the whole screen with no way
+              to reach its lower fields or the list. Actions stay pinned
+              below the scroll area. */}
+          <ScrollView
+            style={styles.filterPanelScroll}
+            showsVerticalScrollIndicator
+            keyboardShouldPersistTaps="handled">
+          <SelectField
+            label={t('bankFiltersSearchByLabel')}
+            value={SEARCH_TYPE_OPTIONS.find(o => o.value === draftFilters.searchType)}
+            options={SEARCH_TYPE_OPTIONS}
+            onSelect={opt => setDraft({searchType: opt.value})}
+            getLabel={opt => t(opt.labelKey)}
+            getKey={opt => String(opt.value)}
+          />
+          <SelectField
+            label={t('sendingCompanyLabel')}
+            value={draftFilters.sender || {id: null}}
+            options={[{id: null}, ...senderOptions]}
+            onSelect={opt => setDraft({sender: opt.id ? opt : null})}
+            getLabel={opt =>
+              opt.id ? (isRTL ? opt.nameInAr || opt.name : opt.name || opt.nameInAr) : t('selectAll')
+            }
+            getKey={opt => String(opt.id)}
+          />
+          <SelectField
+            label={t('bankFiltersReceiverLabel')}
+            value={draftFilters.receiver || {id: null}}
+            options={[{id: null}, ...receiverOptions]}
+            onSelect={opt => setDraft({receiver: opt.id ? opt : null})}
+            getLabel={opt =>
+              opt.id ? (isRTL ? opt.nameInAr || opt.name : opt.name || opt.nameInAr) : t('selectAll')
+            }
+            getKey={opt => String(opt.id)}
+          />
+          <SelectField
+            label={t('bankFiltersDateFieldLabel')}
+            value={DATE_FIELD_OPTIONS.find(o => o.value === draftFilters.dateField)}
+            options={DATE_FIELD_OPTIONS}
+            onSelect={opt => setDraft({dateField: opt.value})}
+            getLabel={opt => t(opt.labelKey)}
+            getKey={opt => String(opt.value)}
+          />
+          {draftFilters.dateField ? (
+            <View style={[styles.dateRow, isRTL && styles.dateRowRTL]}>
+              <View style={styles.dateField}>
+                <FormField
+                  label={t('bankFiltersFromDate')}
+                  value={draftFilters.startDate}
+                  onChangeText={v => setDraft({startDate: v})}
+                  placeholder="2026-01-01"
+                />
+              </View>
+              <View style={styles.dateField}>
+                <FormField
+                  label={t('bankFiltersToDate')}
+                  value={draftFilters.endDate}
+                  onChangeText={v => setDraft({endDate: v})}
+                  placeholder="2026-12-31"
+                />
+              </View>
+            </View>
+          ) : null}
+          <FilterCheckRow
+            label={t('includeCompletedApplications')}
+            checked={draftFilters.includeCompleted}
+            onToggle={() => setDraft({includeCompleted: !draftFilters.includeCompleted})}
+            isRTL={isRTL}
+          />
+          <FilterCheckRow
+            label={t('includeRejectedApplications')}
+            checked={draftFilters.includeRejected}
+            onToggle={() => setDraft({includeRejected: !draftFilters.includeRejected})}
+            isRTL={isRTL}
+          />
+          </ScrollView>
+          <View style={[styles.filterActionsRow, isRTL && styles.filterActionsRowRTL]}>
+            <View style={styles.filterActionBtn}>
+              <PrimaryButton title={t('resetFiltersAction')} variant="secondary" onPress={resetAdvancedFilters} />
+            </View>
+            <View style={styles.filterActionBtn}>
+              <PrimaryButton title={t('applyFiltersAction')} onPress={applyDraftFilters} />
+            </View>
+          </View>
+        </View>
+      ) : null}
 
       <CustomText style={styles.sectionTitle} paddingTop={0}>
         {t('bankHomeRecentApplications')}
@@ -997,6 +1245,38 @@ const styles = StyleSheet.create({
   heroChipValue: {color: '#fff', fontSize: 14, fontWeight: '800', includeFontPadding: false},
   heroChipLabel: {color: 'rgba(255,255,255,0.6)', fontSize: 10, fontWeight: '600', includeFontPadding: false},
 
+  filterPanel: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 14,
+    marginBottom: 16,
+    maxHeight: '56%',
+    ...CARD_SHADOW,
+  },
+  filterPanelScroll: {flexGrow: 0},
+  dateRow: {flexDirection: 'row', gap: 10},
+  dateRowRTL: {flexDirection: 'row-reverse'},
+  dateField: {flex: 1},
+  checkRow: {flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8},
+  checkRowRTL: {flexDirection: 'row-reverse'},
+  checkBox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.surface,
+  },
+  checkBoxChecked: {backgroundColor: COLORS.primary, borderColor: COLORS.primary},
+  checkMark: {color: '#fff', fontSize: 13, fontWeight: '700'},
+  checkLabel: {fontSize: 13, color: COLORS.text},
+  filterActionsRow: {flexDirection: 'row', gap: 10, marginTop: 10},
+  filterActionsRowRTL: {flexDirection: 'row-reverse'},
+  filterActionBtn: {flex: 1},
   searchFilterRow: {
     flexDirection: 'row',
     alignItems: 'center',
