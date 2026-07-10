@@ -11,26 +11,28 @@ import {
   FlatList,
   ScrollView,
   RefreshControl,
+  Modal,
+  Platform,
+  KeyboardAvoidingView,
+  useWindowDimensions,
 } from 'react-native';
-import {SafeAreaView} from 'react-native-safe-area-context';
+import {SafeAreaView, useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useTranslation} from 'react-i18next';
 import {useNavigation} from '@react-navigation/native';
-import Svg, {Circle} from 'react-native-svg';
-import {SlidersHorizontal, CheckCircle2, XCircle, Layers, CircleDashed} from 'lucide-react-native';
+import Svg, {Circle, Defs, LinearGradient as SvgLinearGradient, Rect, Stop} from 'react-native-svg';
+import {SlidersHorizontal, ArrowUp, X} from 'lucide-react-native';
 
 import {LanguageContext} from '../../../App';
 import {useAuth} from '../../context/AuthContext';
 import CustomText from '../../components/CustomText';
+import CustomInput from '../../components/CustomInput';
 import SearchInput from '../../components/SearchInput';
-import SelectField from '../../components/SelectField';
-import FormField from '../../components/FormField';
 import PrimaryButton from '../../components/PrimaryButton';
 import ErrorState from '../../components/ErrorState';
 import ListEmptyState from '../../components/ListEmptyState';
 import LoadingState from '../../components/LoadingState';
-import {useAlert} from '../../context/AlertContext';
 import {tajawalStyleForWeight} from '../../constants/fonts';
-import {COLORS, PRIMARY_SHADOW, CARD_SHADOW} from '../../constants/theme';
+import {COLORS, PRIMARY_SHADOW, CARD_SHADOW, makeShadow} from '../../constants/theme';
 import {getBankApplications, getBankSubCompanies, getBankSuppliers} from '../../services/bank/bankApplications';
 
 // A bank-admin-focused home screen, styled after the real HomeScreen.js's
@@ -43,7 +45,16 @@ import {getBankApplications, getBankSubCompanies, getBankSuppliers} from '../../
 // categorizeApplication/mapRoleStatus/mapInvoice helpers below for how the
 // backend's three-role (creator/auditor/executor) status matrix collapses
 // into this card's single overall category + per-role badges.
-const CARD_HEIGHT = 244;
+//
+// Filtering UI follows the design_handoff_bank_home_filtering package:
+// one-tap status chips, a bottom-sheet advanced filter panel with typeahead
+// sender/receiver search, per-search-type placeholders (date search types
+// swap the search bar for From/To inputs — the backend has a single
+// startDate/endDate pair that is only read for date `type`s, so there is
+// deliberately no second "general" date range), removable applied-filter
+// pills, and a newest/oldest sort toggle wired to the backend's own
+// sortPayment=asc|desc param (it sorts by latest payment date).
+const CARD_HEIGHT = 196;
 const CARD_COLLAPSED_HEIGHT = 64;
 const HEADER_HEIGHT = 60;
 const PAGE_LIMIT = 20;
@@ -57,10 +68,10 @@ const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 const CATEGORY_STYLES = {
-  awaiting: {tagBg: '#fff3d6', tagText: '#a6740a', labelKey: 'bankHomeAwaitingYou'},
-  inProgress: {tagBg: '#e3f2fd', tagText: '#1976d2', labelKey: 'bankHomeInProgress'},
-  completed: {tagBg: '#e6f9f1', tagText: COLORS.success, labelKey: 'bankHomeCompleted'},
-  rejected: {tagBg: '#fde8e8', tagText: COLORS.danger, labelKey: 'bankHomeRejected'},
+  awaiting: {tagBg: '#fff3d6', tagText: '#a6740a', accent: COLORS.pending, labelKey: 'bankHomeAwaitingYou'},
+  inProgress: {tagBg: '#e3f2fd', tagText: '#1976d2', accent: '#3d9dd9', labelKey: 'bankHomeInProgress'},
+  completed: {tagBg: '#e6f9f1', tagText: COLORS.success, accent: COLORS.success, labelKey: 'bankHomeCompleted'},
+  rejected: {tagBg: '#fde8e8', tagText: COLORS.danger, accent: COLORS.danger, labelKey: 'bankHomeRejected'},
 };
 
 const ROLE_STATUS_COLORS = {
@@ -70,13 +81,7 @@ const ROLE_STATUS_COLORS = {
   notStarted: COLORS.textMuted,
 };
 
-const FILTER_OPTIONS = [
-  {value: 'all', labelKey: 'bankHomeFilterAll'},
-  {value: 'awaiting', labelKey: CATEGORY_STYLES.awaiting.labelKey},
-  {value: 'inProgress', labelKey: CATEGORY_STYLES.inProgress.labelKey},
-  {value: 'completed', labelKey: CATEGORY_STYLES.completed.labelKey},
-  {value: 'rejected', labelKey: CATEGORY_STYLES.rejected.labelKey},
-];
+const STATUS_CHIP_KEYS = ['all', 'awaiting', 'inProgress', 'completed', 'rejected'];
 
 // The backend has a direct paymentsStatus filter for these three buckets
 // (confirmed against bankAndSubcompanyController.js's non-executor branch),
@@ -90,35 +95,36 @@ const FILTER_TO_PAYMENTS_STATUS = {
   rejected: 'rejected',
 };
 
-// Advanced filters, mirroring the web dashboard's collapsible filter panel
-// (BanksInvoicesApplicationsFilters.jsx) and the backend's own query
-// contract: `type` picks ONE search dimension per request — a text search
-// (with `query`) or a date field (with startDate/endDate) — while
-// sender/receiver and the include-* switches are independent params.
+// The backend's `type` picks ONE search dimension per request — text types
+// carry `query`, date types carry startDate/endDate. Values confirmed
+// against getBankMultiContainersInvoices' own switch + post-fetch filters
+// (invoiceNumber / transactionNum / paymentAmount / date / paymentsDate /
+// executionDate). There is no "payment status" search type server-side —
+// that's the independent paymentsStatus param the status chips drive — so
+// the handoff prototype's "Payment status" chip is intentionally dropped.
 const SEARCH_TYPE_OPTIONS = [
-  {value: 'invoiceNumber', labelKey: 'invoiceNumberLabel'},
-  {value: 'transactionNum', labelKey: 'transactionNumber'},
-  {value: 'paymentAmount', labelKey: 'paymentAmount'},
+  {value: 'invoiceNumber', labelKey: 'invoiceNumberLabel', placeholderKey: 'bankSearchPlaceholder_invoiceNumber'},
+  {value: 'date', labelKey: 'bankFiltersInvoiceDate', isDate: true},
+  {value: 'paymentsDate', labelKey: 'bankFiltersPaymentDate', isDate: true},
+  {value: 'executionDate', labelKey: 'bankFiltersExecutionDate', isDate: true},
+  {value: 'paymentAmount', labelKey: 'paymentAmount', placeholderKey: 'bankSearchPlaceholder_paymentAmount'},
+  {value: 'transactionNum', labelKey: 'transactionNumber', placeholderKey: 'bankSearchPlaceholder_transactionNum'},
 ];
-const DATE_FIELD_OPTIONS = [
-  {value: null, labelKey: 'bankFiltersDateNone'},
-  {value: 'date', labelKey: 'bankFiltersInvoiceDate'},
-  {value: 'paymentsDate', labelKey: 'bankFiltersPaymentDate'},
-  {value: 'executionDate', labelKey: 'bankFiltersExecutionDate'},
-];
+const SEARCH_TYPE_BY_VALUE = Object.fromEntries(SEARCH_TYPE_OPTIONS.map(o => [o.value, o]));
+
 // includeCompleted/includeRejected default ON to preserve this screen's
 // existing behavior (it always sent both as true before the panel existed).
 const DEFAULT_ADVANCED_FILTERS = {
   searchType: 'invoiceNumber',
   sender: null,
   receiver: null,
-  dateField: null,
-  startDate: '',
-  endDate: '',
   includeCompleted: true,
   includeRejected: true,
 };
 const DATE_INPUT_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+const optionLabel = (opt, isRTL) =>
+  (isRTL ? opt?.nameInAr || opt?.name : opt?.name || opt?.nameInAr) || '';
 
 const FilterCheckRow = ({label, checked, onToggle, isRTL}) => (
   <TouchableOpacity
@@ -242,21 +248,19 @@ const LiveDot = () => {
   );
 };
 
-const HeroChip = ({Icon, color, label, value, isRTL}) => {
+// The hero's 3-column Completed / Rejected / Total pill row, per the
+// handoff design (replaces the old 2x2 icon-chip grid).
+const HeroStatPill = ({color, label, value, isRTL}) => {
   // Plain Text (not CustomText) throughout the hero card, so it needs its
-  // own Arabic font resolution here too — see the `af()` comment above.
+  // own Arabic font resolution here too — see the `af()` comment below.
   const valueFont = isRTL ? tajawalStyleForWeight('800') : null;
   const labelFont = isRTL ? tajawalStyleForWeight('600') : null;
+  const align = {textAlign: isRTL ? 'right' : 'left'};
 
   return (
-    <View style={[styles.heroChip, isRTL && styles.heroChipRTL]}>
-      <View style={[styles.heroChipIconWrap, {backgroundColor: `${color}26`}]}>
-        <Icon size={14} color={color} />
-      </View>
-      <View style={isRTL ? styles.heroChipTextRTL : null}>
-        <Text style={[styles.heroChipValue, {textAlign: isRTL ? 'right' : 'left'}, valueFont]}>{value}</Text>
-        <Text style={[styles.heroChipLabel, {textAlign: isRTL ? 'right' : 'left'}, labelFont]}>{label}</Text>
-      </View>
+    <View style={styles.heroStatPill}>
+      <Text style={[styles.heroStatValue, {color}, align, valueFont]}>{value}</Text>
+      <Text style={[styles.heroStatLabel, align, labelFont]}>{label}</Text>
     </View>
   );
 };
@@ -340,54 +344,350 @@ const ApplicationCard = ({app, isRTL, isExpanded, onToggle, index}) => {
         ],
       }}>
       <TouchableOpacity
-        style={styles.card}
+        style={[styles.card, isRTL && styles.cardRTL]}
         activeOpacity={0.9}
         onPress={onToggle}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}>
-        <View style={[styles.cardTop, isRTL && styles.cardTopRTL]}>
-          <View style={isRTL ? styles.cardLeftRTL : styles.cardLeft}>
-            <CustomText style={styles.invoiceNumber} paddingTop={0}>
-              {app.invoiceNumber}
-            </CustomText>
-            <CustomText style={styles.companyName} paddingTop={0} numberOfLines={1}>
-              {companyName}
-            </CustomText>
-            <CustomText style={styles.dateText} paddingTop={0}>
-              {app.date}
-            </CustomText>
-          </View>
-
-          <View style={isRTL ? styles.cardRightRTL : styles.cardRight}>
-            <CustomText bold style={styles.amountText} paddingTop={0}>
-              {app.amount} {app.currency}
-            </CustomText>
-            <View style={[styles.overallBadge, isRTL && styles.overallBadgeRTL, {backgroundColor: cat.tagBg}]}>
-              <View style={[styles.overallBadgeDot, {backgroundColor: cat.tagText}]} />
-              <CustomText style={[styles.overallBadgeText, {color: cat.tagText}]} paddingTop={0}>
-                {t(cat.labelKey)}
+        {/* Status accent bar hugs the reading-start edge (mirrors in RTL). */}
+        <View style={[styles.cardAccent, {backgroundColor: cat.accent}]} />
+        <View style={styles.cardBody}>
+          <View style={[styles.cardTop, isRTL && styles.cardTopRTL]}>
+            <View style={isRTL ? styles.cardLeftRTL : styles.cardLeft}>
+              <CustomText style={styles.invoiceNumber} paddingTop={0}>
+                {app.invoiceNumber}
+              </CustomText>
+              <CustomText style={styles.companyName} paddingTop={0} numberOfLines={1}>
+                {companyName}
+              </CustomText>
+              <CustomText style={styles.dateText} paddingTop={0}>
+                {app.date}
               </CustomText>
             </View>
-            <CustomText style={styles.chevron} paddingTop={0} lineHeight={20}>
-              {isExpanded ? '⌄' : isRTL ? '‹' : '›'}
-            </CustomText>
-          </View>
-        </View>
 
-        <Animated.View
-          style={{
-            maxHeight: expandAnim.interpolate({inputRange: [0, 1], outputRange: [0, 240]}),
-            opacity: expandAnim,
-            overflow: 'hidden',
-          }}>
-          <View style={styles.roleBreakdown}>
-            <RoleRow label={t('creator')} person={app.creator} isRTL={isRTL} />
-            <RoleRow label={t('bankAuditorLabel')} person={app.auditor} isRTL={isRTL} />
-            <RoleRow label={t('bankHomeExecutorLabel')} person={app.executor} isRTL={isRTL} />
+            <View style={isRTL ? styles.cardRightRTL : styles.cardRight}>
+              <CustomText bold style={styles.amountText} paddingTop={0}>
+                {app.amount} {app.currency}
+              </CustomText>
+              <View style={[styles.overallBadge, isRTL && styles.overallBadgeRTL, {backgroundColor: cat.tagBg}]}>
+                <View style={[styles.overallBadgeDot, {backgroundColor: cat.tagText}]} />
+                <CustomText style={[styles.overallBadgeText, {color: cat.tagText}]} paddingTop={0}>
+                  {t(cat.labelKey)}
+                </CustomText>
+              </View>
+              <CustomText style={styles.chevron} paddingTop={0} lineHeight={20}>
+                {isExpanded ? '⌄' : isRTL ? '‹' : '›'}
+              </CustomText>
+            </View>
           </View>
-        </Animated.View>
+
+          <Animated.View
+            style={{
+              maxHeight: expandAnim.interpolate({inputRange: [0, 1], outputRange: [0, 240]}),
+              opacity: expandAnim,
+              overflow: 'hidden',
+            }}>
+            <View style={styles.roleBreakdown}>
+              <RoleRow label={t('creator')} person={app.creator} isRTL={isRTL} />
+              <RoleRow label={t('bankAuditorLabel')} person={app.auditor} isRTL={isRTL} />
+              <RoleRow label={t('bankHomeExecutorLabel')} person={app.executor} isRTL={isRTL} />
+            </View>
+          </Animated.View>
+        </View>
       </TouchableOpacity>
     </Animated.View>
+  );
+};
+
+// One-tap status chips (All + the four buckets), each with a live org-wide
+// count — replaces the old filter-button-into-dropdown swap entirely.
+const StatusChip = ({chipKey, label, count, active, onPress, isRTL}) => {
+  const cat = CATEGORY_STYLES[chipKey];
+  const activeColor = cat ? cat.tagText : COLORS.text;
+  const chipStyle = active
+    ? {backgroundColor: activeColor, borderColor: activeColor}
+    : cat
+      ? {backgroundColor: cat.tagBg, borderColor: 'transparent'}
+      : {backgroundColor: COLORS.surface, borderColor: COLORS.border};
+  const textColor = active ? '#fff' : activeColor;
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.8}
+      onPress={onPress}
+      style={[styles.statusChip, isRTL && styles.statusChipRTL, chipStyle]}>
+      <CustomText style={[styles.statusChipLabel, {color: textColor}]} paddingTop={0}>
+        {label}
+      </CustomText>
+      <CustomText style={[styles.statusChipCount, {color: textColor}]} paddingTop={0}>
+        {count}
+      </CustomText>
+    </TouchableOpacity>
+  );
+};
+
+// Removable pill summarizing one applied advanced-filter dimension.
+const ActiveFilterPill = ({label, onClear, isRTL}) => (
+  <View style={[styles.activePill, isRTL && styles.activePillRTL]}>
+    <CustomText style={styles.activePillText} paddingTop={0}>
+      {label}
+    </CustomText>
+    <TouchableOpacity
+      onPress={onClear}
+      hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}
+      style={styles.activePillClear}>
+      <X size={10} color="#fff" strokeWidth={3} />
+    </TouchableOpacity>
+  </View>
+);
+
+// Typeahead input for the bottom sheet's sender/receiver pickers: type to
+// filter, tap a suggestion to select, ✕ clears both text and selection.
+// Suggestions render inline (pushing content down) instead of an absolute
+// overlay — inside the sheet's own ScrollView an overlay would fight
+// z-order and touch handling for no visual gain at this size.
+const TypeaheadField = ({label, placeholder, options, selected, onSelect, isRTL, t}) => {
+  const [query, setQuery] = useState(() => optionLabel(selected, isRTL));
+  const [focused, setFocused] = useState(false);
+
+  const trimmed = query.trim();
+  const lower = trimmed.toLowerCase();
+  const suggestions = options
+    .filter(
+      o =>
+        !trimmed ||
+        (o.name || '').toLowerCase().includes(lower) ||
+        (o.nameInAr || '').includes(trimmed),
+    )
+    .slice(0, 6);
+  const showSuggestions = focused && !selected;
+
+  return (
+    <View style={styles.typeaheadBlock}>
+      <CustomText style={styles.sheetSectionLabel} paddingTop={0}>
+        {label}
+      </CustomText>
+      <View style={[styles.typeaheadInputRow, isRTL && styles.typeaheadInputRowRTL]}>
+        <CustomText paddingTop={0}>🔍</CustomText>
+        <CustomInput
+          style={styles.typeaheadInput}
+          placeholder={placeholder}
+          placeholderTextColor={COLORS.textMuted}
+          value={query}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          onChangeText={v => {
+            setQuery(v);
+            if (selected) {
+              onSelect(null);
+            }
+          }}
+        />
+        {selected ? (
+          <TouchableOpacity
+            onPress={() => {
+              onSelect(null);
+              setQuery('');
+            }}
+            hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}
+            style={styles.typeaheadClear}>
+            <X size={10} color={COLORS.primaryDark} strokeWidth={3} />
+          </TouchableOpacity>
+        ) : null}
+      </View>
+      {showSuggestions ? (
+        <View style={styles.suggestionList}>
+          {suggestions.length > 0 ? (
+            suggestions.map((opt, idx) => (
+              <TouchableOpacity
+                key={String(opt.id)}
+                style={[styles.suggestionRow, idx === suggestions.length - 1 && styles.suggestionRowLast]}
+                onPress={() => {
+                  onSelect(opt);
+                  setQuery(optionLabel(opt, isRTL));
+                  setFocused(false);
+                }}>
+                <CustomText style={styles.suggestionText} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+                  {optionLabel(opt, isRTL)}
+                </CustomText>
+              </TouchableOpacity>
+            ))
+          ) : (
+            <CustomText style={styles.suggestionEmpty} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+              {t('bankFiltersNoMatches')}
+            </CustomText>
+          )}
+        </View>
+      ) : null}
+    </View>
+  );
+};
+
+// The advanced-filter bottom sheet: dimmed backdrop + slide-up white sheet
+// with a drag-handle bar, per the handoff design. Draft edits live in the
+// parent's draftFilters and only hit the network on Apply; closing via
+// backdrop/✕ simply discards them (the parent re-seeds the draft from the
+// applied filters on every open). Reset clears the DRAFT only.
+// Pure Animated (opacity/translateY, native driver) — no LayoutAnimation
+// anywhere near this screen's svg content (Fabric SIGABRT, see above).
+const AdvancedFilterSheet = ({
+  visible,
+  onClose,
+  onApply,
+  onResetDraft,
+  draft,
+  setDraft,
+  senderOptions,
+  receiverOptions,
+  isRTL,
+}) => {
+  const {t} = useTranslation();
+  const insets = useSafeAreaInsets();
+  const {height: windowHeight} = useWindowDimensions();
+  const backdropAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const [rendered, setRendered] = useState(visible);
+  // Bumped on Reset to remount the typeahead fields, clearing their local
+  // query text along with the draft selections they mirror.
+  const [resetNonce, setResetNonce] = useState(0);
+
+  useEffect(() => {
+    if (visible) {
+      setRendered(true);
+      Animated.parallel([
+        Animated.timing(backdropAnim, {toValue: 1, duration: 200, useNativeDriver: true}),
+        Animated.timing(slideAnim, {
+          toValue: 1,
+          duration: 280,
+          easing: Easing.bezier(0.2, 0.9, 0.3, 1),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(backdropAnim, {toValue: 0, duration: 180, useNativeDriver: true}),
+        Animated.timing(slideAnim, {toValue: 0, duration: 220, easing: Easing.in(Easing.cubic), useNativeDriver: true}),
+      ]).start(({finished}) => {
+        if (finished) {
+          setRendered(false);
+        }
+      });
+    }
+  }, [visible, backdropAnim, slideAnim]);
+
+  if (!rendered) {
+    return null;
+  }
+
+  const handleReset = () => {
+    onResetDraft();
+    setResetNonce(n => n + 1);
+  };
+
+  return (
+    <Modal transparent visible animationType="none" statusBarTranslucent onRequestClose={onClose}>
+      <View style={styles.sheetRoot}>
+        <Animated.View style={[styles.sheetBackdrop, {opacity: backdropAnim}]}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
+        </Animated.View>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} pointerEvents="box-none">
+          <Animated.View
+            style={[
+              styles.sheet,
+              {
+                // Numeric, not a percentage: the sheet's parent
+                // (KeyboardAvoidingView) is auto-height, and a % maxHeight
+                // against an auto parent resolves bogusly small — which was
+                // silently crushing the ScrollView and hiding the lower
+                // fields behind an internal scroll despite free space.
+                maxHeight: Math.round(windowHeight * 0.86),
+                marginBottom: insets.bottom + 10,
+                transform: [{translateY: slideAnim.interpolate({inputRange: [0, 1], outputRange: [720, 0]})}],
+              },
+            ]}>
+            <View style={styles.sheetHandle} />
+            <View style={[styles.sheetHeader, isRTL && styles.sheetHeaderRTL]}>
+              <CustomText style={styles.sheetTitle} paddingTop={0}>
+                {t('bankFiltersSheetTitle')}
+              </CustomText>
+              <TouchableOpacity style={styles.sheetCloseBtn} onPress={onClose}>
+                <X size={14} color={COLORS.primaryDark} strokeWidth={3} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              style={styles.sheetScroll}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled">
+              <CustomText style={styles.sheetSectionLabel} paddingTop={0}>
+                {t('bankFiltersSearchByLabel')}
+              </CustomText>
+              <View style={[styles.searchTypeWrap, isRTL && styles.searchTypeWrapRTL]}>
+                {SEARCH_TYPE_OPTIONS.map(opt => {
+                  const active = draft.searchType === opt.value;
+                  return (
+                    <TouchableOpacity
+                      key={opt.value}
+                      activeOpacity={0.8}
+                      onPress={() => setDraft({searchType: opt.value})}
+                      style={[styles.searchTypeChip, active && styles.searchTypeChipActive]}>
+                      <CustomText
+                        style={[styles.searchTypeChipText, active && styles.searchTypeChipTextActive]}
+                        paddingTop={0}>
+                        {t(opt.labelKey)}
+                      </CustomText>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <TypeaheadField
+                key={`sender-${resetNonce}`}
+                label={t('sendingCompanyLabel')}
+                placeholder={t('bankFiltersSenderTypeahead')}
+                options={senderOptions}
+                selected={draft.sender}
+                onSelect={opt => setDraft({sender: opt})}
+                isRTL={isRTL}
+                t={t}
+              />
+              <TypeaheadField
+                key={`receiver-${resetNonce}`}
+                label={t('bankFiltersReceiverLabel')}
+                placeholder={t('bankFiltersReceiverTypeahead')}
+                options={receiverOptions}
+                selected={draft.receiver}
+                onSelect={opt => setDraft({receiver: opt})}
+                isRTL={isRTL}
+                t={t}
+              />
+
+              <FilterCheckRow
+                label={t('includeCompletedApplications')}
+                checked={draft.includeCompleted}
+                onToggle={() => setDraft({includeCompleted: !draft.includeCompleted})}
+                isRTL={isRTL}
+              />
+              <FilterCheckRow
+                label={t('includeRejectedApplications')}
+                checked={draft.includeRejected}
+                onToggle={() => setDraft({includeRejected: !draft.includeRejected})}
+                isRTL={isRTL}
+              />
+            </ScrollView>
+
+            <View style={[styles.filterActionsRow, isRTL && styles.filterActionsRowRTL]}>
+              <View style={styles.filterActionBtn}>
+                <PrimaryButton title={t('resetFiltersAction')} variant="secondary" onPress={handleReset} />
+              </View>
+              <View style={styles.filterActionBtn}>
+                <PrimaryButton title={t('applyFiltersAction')} onPress={onApply} />
+              </View>
+            </View>
+          </Animated.View>
+        </KeyboardAvoidingView>
+      </View>
+    </Modal>
   );
 };
 
@@ -408,14 +708,20 @@ const BankHomeScreen = () => {
   const userRole = session?.organization?.role;
 
   const [search, setSearch] = useState('');
+  // From/To for the date search types — these replace the text search bar
+  // whenever the applied searchType is a date field, and are the ONLY date
+  // range UI (the backend reads startDate/endDate solely for date `type`s).
+  const [searchFrom, setSearchFrom] = useState('');
+  const [searchTo, setSearchTo] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
-  const [filterMode, setFilterMode] = useState(false);
+  const [sortDir, setSortDir] = useState('newest');
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
-  const {showAlert} = useAlert();
 
-  // Applied vs. draft advanced filters: panel edits stage into the draft
-  // and only hit the network when تطبيق is pressed, matching the web
-  // panel's explicit search/apply flow.
+  // Applied vs. draft advanced filters: sheet edits stage into the draft
+  // and only hit the network when Apply is pressed; closing the sheet any
+  // other way discards them (the draft is re-seeded from the applied
+  // filters on every open).
   const [advancedFilters, setAdvancedFilters] = useState(DEFAULT_ADVANCED_FILTERS);
   const [draftFilters, setDraftFilters] = useState(DEFAULT_ADVANCED_FILTERS);
   const [senderOptions, setSenderOptions] = useState([]);
@@ -423,9 +729,15 @@ const BankHomeScreen = () => {
   const filterOptionsLoadedRef = useRef(false);
 
   const setDraft = patch => setDraftFilters(prev => ({...prev, ...patch}));
+  // Pills apply instantly — patch both the applied filters and the draft so
+  // reopening the sheet reflects what the pills now say.
+  const patchAppliedFilters = patch => {
+    setAdvancedFilters(prev => ({...prev, ...patch}));
+    setDraftFilters(prev => ({...prev, ...patch}));
+  };
 
-  // Lazily fetch the sender/receiver dropdown data the first time the
-  // panel opens — both lists are org-wide and small enough to load once.
+  // Lazily fetch the sender/receiver typeahead data the first time the
+  // sheet opens — both lists are org-wide and small enough to load once.
   const loadFilterOptions = useCallback(async () => {
     if (filterOptionsLoadedRef.current) {
       return;
@@ -439,29 +751,20 @@ const BankHomeScreen = () => {
       setSenderOptions(subs?.subCompanies || []);
       setReceiverOptions(sups?.suppliers || []);
     } catch (err) {
-      // Leave the dropdowns with just "All" — the rest of the panel still works.
+      // Leave the typeaheads empty — the rest of the sheet still works.
       filterOptionsLoadedRef.current = false;
     }
   }, [session?.organization?.name]);
 
-  const applyDraftFilters = () => {
-    for (const value of [draftFilters.startDate, draftFilters.endDate]) {
-      if (value && !DATE_INPUT_RE.test(value.trim())) {
-        showAlert(t('invalidDateFormatError'));
-        return;
-      }
-    }
-    setAdvancedFilters({
-      ...draftFilters,
-      startDate: draftFilters.startDate.trim(),
-      endDate: draftFilters.endDate.trim(),
-    });
+  const openSheet = () => {
+    setDraftFilters(advancedFilters);
+    loadFilterOptions();
+    setSheetOpen(true);
   };
 
-  const resetAdvancedFilters = () => {
-    setDraftFilters(DEFAULT_ADVANCED_FILTERS);
-    setAdvancedFilters(DEFAULT_ADVANCED_FILTERS);
-    setActiveFilter('all');
+  const applyDraftFilters = () => {
+    setAdvancedFilters(draftFilters);
+    setSheetOpen(false);
   };
 
   const [applications, setApplications] = useState([]);
@@ -475,11 +778,12 @@ const BankHomeScreen = () => {
   // Accurate org-wide counts fetched separately from the list itself
   // (limit: 1 each, reading only .totalInvoices) — computing these from
   // just the currently-loaded page would undercount as soon as pagination
-  // or a filter narrows what's actually fetched. notStartedCount is the
-  // one exception: there's no server-side bucket for "creator specifically
-  // hasn't started" (only the broader "awaiting" bucket, which also
-  // includes auditor-not-started), so it's derived from whatever page is
-  // currently loaded and is a page-scoped approximation, not a global count.
+  // or a filter narrows what's actually fetched. inProgress is the one
+  // exception: there's no server-side bucket for it, so its chip count is
+  // derived as total minus the three server-backed buckets (the backend's
+  // own categorization is a cascade, so the four buckets partition the
+  // total; clamped at 0 in case the independent count queries ever
+  // double-count an edge case).
   const [heroStats, setHeroStats] = useState({
     awaitingCount: 0,
     completedCount: 0,
@@ -488,6 +792,11 @@ const BankHomeScreen = () => {
   });
 
   const abortControllerRef = useRef(null);
+
+  const searchTypeMeta = SEARCH_TYPE_BY_VALUE[advancedFilters.searchType] || SEARCH_TYPE_OPTIONS[0];
+  const isDateSearch = !!searchTypeMeta.isDate;
+  const fromValid = !searchFrom || DATE_INPUT_RE.test(searchFrom.trim());
+  const toValid = !searchTo || DATE_INPUT_RE.test(searchTo.trim());
 
   const fetchApplications = useCallback(
     async ({targetPage = 1, query = '', filter = activeFilter, append = false} = {}) => {
@@ -505,6 +814,8 @@ const BankHomeScreen = () => {
           userRole,
           includeCompleted: advancedFilters.includeCompleted,
           includeRejected: advancedFilters.includeRejected,
+          // Backend sorts by latest payment date; asc = oldest first.
+          sortPayment: sortDir === 'oldest' ? 'asc' : 'desc',
         };
         if (advancedFilters.sender?.id) {
           params.subCompanyId = advancedFilters.sender.id;
@@ -513,22 +824,19 @@ const BankHomeScreen = () => {
           params.supplierId = advancedFilters.receiver.id;
         }
         // The backend applies exactly one search dimension per request via
-        // `type`: an active date-range filter takes that slot (with
-        // startDate/endDate), otherwise the text search-by does (with query).
-        const dateActive = advancedFilters.dateField && (advancedFilters.startDate || advancedFilters.endDate);
-        if (dateActive) {
-          params.type = advancedFilters.dateField;
-          if (advancedFilters.startDate) {
-            params.startDate = advancedFilters.startDate;
+        // `type`: date types read startDate/endDate, text types read query.
+        params.type = advancedFilters.searchType;
+        if (isDateSearch) {
+          const from = searchFrom.trim();
+          const to = searchTo.trim();
+          if (from && DATE_INPUT_RE.test(from)) {
+            params.startDate = from;
           }
-          if (advancedFilters.endDate) {
-            params.endDate = advancedFilters.endDate;
+          if (to && DATE_INPUT_RE.test(to)) {
+            params.endDate = to;
           }
-        } else {
-          params.type = advancedFilters.searchType;
-          if (query) {
-            params.query = query;
-          }
+        } else if (query) {
+          params.query = query;
         }
         const paymentsStatus = FILTER_TO_PAYMENTS_STATUS[filter];
         if (paymentsStatus) {
@@ -559,7 +867,7 @@ const BankHomeScreen = () => {
         }
       }
     },
-    [activeFilter, advancedFilters, userRole, t],
+    [activeFilter, advancedFilters, userRole, sortDir, isDateSearch, searchFrom, searchTo, t],
   );
 
   const fetchHeroStats = useCallback(async () => {
@@ -567,8 +875,8 @@ const BankHomeScreen = () => {
       const [totalRes, awaitingRes, completedRes, rejectedRes] = await Promise.all([
         getBankApplications({limit: 1, userRole, includeCompleted: true, includeRejected: true}),
         getBankApplications({limit: 1, userRole, paymentsStatus: 'unstartedPayments'}),
-        getBankApplications({limit: 1, userRole, paymentsStatus: 'completed'}),
-        getBankApplications({limit: 1, userRole, paymentsStatus: 'rejected'}),
+        getBankApplications({limit: 1, userRole, paymentsStatus: 'completed', includeCompleted: true}),
+        getBankApplications({limit: 1, userRole, paymentsStatus: 'rejected', includeRejected: true}),
       ]);
       setHeroStats({
         totalCount: totalRes?.totalInvoices || 0,
@@ -601,11 +909,16 @@ const BankHomeScreen = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigation]);
 
-  // Debounced live search, same pattern as HomeScreen.js.
+  // Debounced live search — covers both the text query and the From/To
+  // date inputs. A partially-typed (invalid) date simply doesn't fetch yet
+  // (the field shows a red border instead of alert-spamming per keystroke).
   const isFirstRender = useRef(true);
   useEffect(() => {
     if (isFirstRender.current) {
       isFirstRender.current = false;
+      return;
+    }
+    if (isDateSearch && (!fromValid || !toValid)) {
       return;
     }
     const timeout = setTimeout(() => {
@@ -613,10 +926,11 @@ const BankHomeScreen = () => {
     }, 400);
     return () => clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
+  }, [search, searchFrom, searchTo]);
 
-  // Re-fetch when the status bucket or the applied advanced filters change
-  // (skips the very first mount, which the initial-load effect covers).
+  // Re-fetch when the status chip, sort direction, or the applied advanced
+  // filters change (skips the very first mount, which the initial-load
+  // effect covers).
   const isFirstFilterRender = useRef(true);
   useEffect(() => {
     if (isFirstFilterRender.current) {
@@ -626,7 +940,7 @@ const BankHomeScreen = () => {
     setIsLoading(true);
     fetchApplications({targetPage: 1, query: search, filter: activeFilter});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeFilter, advancedFilters]);
+  }, [activeFilter, advancedFilters, sortDir]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -663,7 +977,6 @@ const BankHomeScreen = () => {
   const EXPAND_SCROLL_THRESHOLD = 10;
   const collapseAnim = useRef(new Animated.Value(0)).current;
   const isCollapsedRef = useRef(false);
-  const lastScrollYRef = useRef(0);
 
   const setHeroCollapsed = collapsed => {
     if (isCollapsedRef.current === collapsed) {
@@ -688,13 +1001,7 @@ const BankHomeScreen = () => {
     // like a flash/glitch). If there isn't enough real content to reach
     // the threshold through genuine scrolling, don't collapse at all.
     const maxScroll = contentSize.height - layoutMeasurement.height;
-    lastScrollYRef.current = contentOffset.y;
     if (maxScroll < COLLAPSE_SCROLL_THRESHOLD) {
-      return;
-    }
-    // The filter panel keeps the hero collapsed for room — don't let a
-    // top-of-list scroll event re-expand it underneath the open panel.
-    if (filterMode) {
       return;
     }
     const y = contentOffset.y;
@@ -716,8 +1023,8 @@ const BankHomeScreen = () => {
   // (not just the card around it) is what makes the collapse actually read
   // as a collapse, and frees up the vertical room to let the card shrink to
   // just label+number+ring instead of merely clipping unshrunk content.
-  const amountFontSize = collapseAnim.interpolate({inputRange: [0, 1], outputRange: [40, 18]});
-  // The ring stays visible while collapsing (unlike the stats chips, which
+  const amountFontSize = collapseAnim.interpolate({inputRange: [0, 1], outputRange: [38, 18]});
+  // The ring stays visible while collapsing (unlike the stats pills, which
   // fade) — it just shrinks to fit the shorter card. The Svg itself fills
   // this wrapper (width/height "100%") with a fixed viewBox, so SVG handles
   // the internal rescaling natively as the wrapper's own size animates —
@@ -727,7 +1034,7 @@ const BankHomeScreen = () => {
   // The percent label has to shrink in step with the ring itself, or it
   // no longer fits inside the smaller circle and pokes out past its edge.
   const ringTextFontSize = collapseAnim.interpolate({inputRange: [0, 1], outputRange: [15, 9]});
-  // Opacity-only fading (like the stats chips get) still reserves the
+  // Opacity-only fading (like the stats pills get) still reserves the
   // trend text's full layout height even at opacity 0 — which was pushing
   // heroTextCol taller than what's actually visible, throwing off the
   // ring's vertical centering against it. Collapsing its height/margin to
@@ -751,9 +1058,16 @@ const BankHomeScreen = () => {
     return tajawalStyleForWeight(weight);
   };
 
-  const {awaitingCount, completedCount: completedTodayCount, rejectedCount: rejectedTodayCount, totalCount} = heroStats;
-  const notStartedCount = applications.filter(a => a.creator.status === 'notStarted').length;
-  const completionPercent = totalCount > 0 ? Math.round((completedTodayCount / totalCount) * 100) : 0;
+  const {awaitingCount, completedCount, rejectedCount, totalCount} = heroStats;
+  const inProgressCount = Math.max(0, totalCount - awaitingCount - completedCount - rejectedCount);
+  const completionPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+  const chipCounts = {
+    all: totalCount,
+    awaiting: awaitingCount,
+    inProgress: inProgressCount,
+    completed: completedCount,
+    rejected: rejectedCount,
+  };
 
   // Animated count-up for the hero number and the progress ring's sweep —
   // replays whenever the real awaiting/completion numbers actually change
@@ -791,30 +1105,76 @@ const BankHomeScreen = () => {
     setExpandedId(prev => (prev === id ? null : id));
   };
 
-  // Fade + slide the search/dropdown slot in whenever filterMode flips,
-  // instead of an abrupt swap.
-  const slotAnim = useRef(new Animated.Value(0)).current;
-  // Drives the filter button's background/border color crossfade *and* its
-  // icon rotation. Must stay native-driven (RN 0.62+ supports native color
-  // animation) since this button's transform (filterPressScale, below) is
-  // also native — mixing drivers within one Animated.View's style object
-  // attaches the whole node to native on the first native `.start()`, so a
-  // later JS-driven `.start()` on a sibling value in that same style throws
-  // "Attempting to run JS driven animation on animated node that has been
-  // moved to native earlier".
+  // How many advanced-filter dimensions are applied — drives the filter
+  // button's purple/badged active state and the removable pills row.
+  // The searchType choice itself isn't counted (it changes what the search
+  // bar means, it doesn't narrow results by itself), matching the prototype.
+  const advCount =
+    (advancedFilters.sender ? 1 : 0) +
+    (advancedFilters.receiver ? 1 : 0) +
+    (!advancedFilters.includeCompleted ? 1 : 0) +
+    (!advancedFilters.includeRejected ? 1 : 0);
+  const hasAdvanced = advCount > 0;
+
+  const activePills = [];
+  if (advancedFilters.sender) {
+    activePills.push({
+      key: 'sender',
+      label: t('bankFiltersPillFrom', {name: optionLabel(advancedFilters.sender, isRTL)}),
+      clear: () => patchAppliedFilters({sender: null}),
+    });
+  }
+  if (advancedFilters.receiver) {
+    activePills.push({
+      key: 'receiver',
+      label: t('bankFiltersPillTo', {name: optionLabel(advancedFilters.receiver, isRTL)}),
+      clear: () => patchAppliedFilters({receiver: null}),
+    });
+  }
+  if (!advancedFilters.includeCompleted) {
+    activePills.push({
+      key: 'hideCompleted',
+      label: t('bankFiltersPillHidingCompleted'),
+      clear: () => patchAppliedFilters({includeCompleted: true}),
+    });
+  }
+  if (!advancedFilters.includeRejected) {
+    activePills.push({
+      key: 'hideRejected',
+      label: t('bankFiltersPillHidingRejected'),
+      clear: () => patchAppliedFilters({includeRejected: true}),
+    });
+  }
+  const clearAllAdvanced = () =>
+    patchAppliedFilters({sender: null, receiver: null, includeCompleted: true, includeRejected: true});
+
+  // Fade + slide the search slot in whenever the search bar swaps between
+  // the text input and the From/To date pair, instead of an abrupt swap.
+  const slotAnim = useRef(new Animated.Value(1)).current;
+  // Drives the filter button's background/border color crossfade. Must stay
+  // native-driven (RN 0.62+ supports native color animation) since this
+  // button's transform (filterPressScale, below) is also native — mixing
+  // drivers within one Animated.View's style object attaches the whole node
+  // to native on the first native `.start()`, so a later JS-driven
+  // `.start()` on a sibling value in that same style throws "Attempting to
+  // run JS driven animation on animated node that has been moved to native
+  // earlier".
   const filterActiveAnim = useRef(new Animated.Value(0)).current;
   const filterPressScale = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     slotAnim.setValue(0);
     Animated.timing(slotAnim, {toValue: 1, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: true}).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDateSearch]);
+  useEffect(() => {
     Animated.timing(filterActiveAnim, {
-      toValue: filterMode ? 1 : 0,
+      toValue: hasAdvanced ? 1 : 0,
       duration: 220,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterMode]);
+  }, [hasAdvanced]);
 
   const handleFilterPressIn = () => {
     Animated.spring(filterPressScale, {toValue: 0.9, useNativeDriver: true, speed: 40, bounciness: 0}).start();
@@ -827,102 +1187,126 @@ const BankHomeScreen = () => {
     inputRange: [0, 1],
     outputRange: [COLORS.border, COLORS.primary],
   });
-  const filterIconRotateDeg = filterActiveAnim.interpolate({inputRange: [0, 1], outputRange: ['0deg', '90deg']});
+
+  // Sort toggle: single tap flips newest/oldest; the arrow flips with it
+  // (pointing down = newest first / descending).
+  const sortAnim = useRef(new Animated.Value(1)).current;
+  const toggleSort = () => {
+    const next = sortDir === 'newest' ? 'oldest' : 'newest';
+    setSortDir(next);
+    Animated.timing(sortAnim, {
+      toValue: next === 'newest' ? 1 : 0,
+      duration: 200,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  };
+  const sortRotate = sortAnim.interpolate({inputRange: [0, 1], outputRange: ['0deg', '180deg']});
+
+  // In RTL the chip row renders reversed and stays anchored at its right
+  // edge (scrollToEnd on every content-size change — counts arriving from
+  // the API widen the chips after first layout, so a one-shot anchor ends
+  // up mid-row), so "الكل" leads from the right the way the rest of the
+  // RTL layout reads.
+  const chipScrollRef = useRef(null);
+  const chipKeys = isRTL ? [...STATUS_CHIP_KEYS].reverse() : STATUS_CHIP_KEYS;
+
+  const renderDateInput = (label, value, onChange, valid) => (
+    <View style={styles.dateInputCol}>
+      <CustomText style={styles.dateInputLabel} paddingTop={0}>
+        {label}
+      </CustomText>
+      <CustomInput
+        style={[styles.dateInput, !valid && styles.dateInputInvalid]}
+        placeholder="YYYY-MM-DD"
+        placeholderTextColor={COLORS.textMuted}
+        value={value}
+        onChangeText={onChange}
+        keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'default'}
+        autoCorrect={false}
+      />
+    </View>
+  );
 
   const renderHeroSection = () => (
     <>
       <Animated.View style={[styles.heroCard, {height: cardHeight, overflow: 'hidden'}]}>
-        <View style={[styles.heroTopRow, isRTL && styles.heroTopRowRTL]}>
-          <View style={styles.heroTextCol}>
-            <View style={[styles.heroLabelRow, isRTL && styles.heroLabelRowRTL]}>
-              <LiveDot />
-              <Text style={[styles.heroLabel, af(styles.heroLabel)]}>{t('bankHomeAwaitingActionLabel')}</Text>
-            </View>
-            <Animated.Text
-              style={[
-                styles.heroNumber,
-                {fontSize: amountFontSize, textAlign: isRTL ? 'right' : 'left'},
-                af(styles.heroNumber),
-              ]}>
-              {displayCount}
-            </Animated.Text>
-            <Animated.View style={{height: heroTrendHeight, marginTop: heroTrendMarginTop, overflow: 'hidden'}}>
+        {/* Diagonal primaryDark→primary gradient per the handoff design —
+            drawn as an absolute-fill Svg since the app has no native
+            gradient dependency (and shouldn't grow one for this). */}
+        <Svg style={StyleSheet.absoluteFill} width="100%" height="100%" preserveAspectRatio="none" viewBox="0 0 100 100">
+          <Defs>
+            <SvgLinearGradient id="heroGradient" x1="0" y1="0" x2="1" y2="1">
+              <Stop offset="0" stopColor={COLORS.primaryDark} />
+              <Stop offset="1" stopColor={COLORS.primary} />
+            </SvgLinearGradient>
+          </Defs>
+          <Rect x="0" y="0" width="100" height="100" fill="url(#heroGradient)" />
+        </Svg>
+        <View style={styles.heroContent}>
+          <View style={[styles.heroTopRow, isRTL && styles.heroTopRowRTL]}>
+            <View style={styles.heroTextCol}>
+              <View style={[styles.heroLabelRow, isRTL && styles.heroLabelRowRTL]}>
+                <LiveDot />
+                <Text style={[styles.heroLabel, af(styles.heroLabel)]}>{t('bankHomeAwaitingActionLabel')}</Text>
+              </View>
               <Animated.Text
                 style={[
-                  styles.heroTrendText,
-                  {opacity: statsOpacity, textAlign: isRTL ? 'right' : 'left'},
-                  af(styles.heroTrendText),
+                  styles.heroNumber,
+                  {fontSize: amountFontSize, textAlign: isRTL ? 'right' : 'left'},
+                  af(styles.heroNumber),
                 ]}>
-                {t('bankHomeCompletionRateLabel', {percent: completionPercent})}
+                {displayCount}
               </Animated.Text>
+              <Animated.View style={{height: heroTrendHeight, marginTop: heroTrendMarginTop, overflow: 'hidden'}}>
+                <Animated.Text
+                  style={[
+                    styles.heroTrendText,
+                    {opacity: statsOpacity, textAlign: isRTL ? 'right' : 'left'},
+                    af(styles.heroTrendText),
+                  ]}>
+                  {t('bankHomeCompletionRateLabel', {percent: completionPercent})}
+                </Animated.Text>
+              </Animated.View>
+            </View>
+
+            <Animated.View style={[styles.heroRingWrap, {width: ringWrapSize, height: ringWrapSize}]}>
+              <Svg width="100%" height="100%" viewBox={`0 0 ${RING_SIZE} ${RING_SIZE}`}>
+                <Circle
+                  cx={RING_SIZE / 2}
+                  cy={RING_SIZE / 2}
+                  r={RING_RADIUS}
+                  stroke="rgba(255,255,255,0.18)"
+                  strokeWidth={RING_STROKE}
+                  fill="none"
+                />
+                <AnimatedCircle
+                  cx={RING_SIZE / 2}
+                  cy={RING_SIZE / 2}
+                  r={RING_RADIUS}
+                  stroke={COLORS.accent}
+                  strokeWidth={RING_STROKE}
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeDasharray={RING_CIRCUMFERENCE}
+                  strokeDashoffset={ringStrokeDashoffset}
+                  transform={`rotate(-90 ${RING_SIZE / 2} ${RING_SIZE / 2})`}
+                />
+              </Svg>
+              <View style={styles.heroRingCenter} pointerEvents="none">
+                <Animated.Text style={[styles.heroRingText, {fontSize: ringTextFontSize}]}>
+                  {completionPercent}%
+                </Animated.Text>
+              </View>
             </Animated.View>
           </View>
 
-          <Animated.View style={[styles.heroRingWrap, {width: ringWrapSize, height: ringWrapSize}]}>
-            <Svg width="100%" height="100%" viewBox={`0 0 ${RING_SIZE} ${RING_SIZE}`}>
-              <Circle
-                cx={RING_SIZE / 2}
-                cy={RING_SIZE / 2}
-                r={RING_RADIUS}
-                stroke="rgba(255,255,255,0.18)"
-                strokeWidth={RING_STROKE}
-                fill="none"
-              />
-              <AnimatedCircle
-                cx={RING_SIZE / 2}
-                cy={RING_SIZE / 2}
-                r={RING_RADIUS}
-                stroke={COLORS.accent}
-                strokeWidth={RING_STROKE}
-                fill="none"
-                strokeLinecap="round"
-                strokeDasharray={RING_CIRCUMFERENCE}
-                strokeDashoffset={ringStrokeDashoffset}
-                transform={`rotate(-90 ${RING_SIZE / 2} ${RING_SIZE / 2})`}
-              />
-            </Svg>
-            <View style={styles.heroRingCenter} pointerEvents="none">
-              <Animated.Text style={[styles.heroRingText, {fontSize: ringTextFontSize}]}>
-                {completionPercent}%
-              </Animated.Text>
-            </View>
+          <Animated.View style={[styles.heroStatsRow, isRTL && styles.heroStatsRowRTL, {opacity: statsOpacity}]}>
+            <HeroStatPill color="#4ade80" label={t('bankHomeCompleted')} value={completedCount} isRTL={isRTL} />
+            <HeroStatPill color="#f87171" label={t('bankHomeRejected')} value={rejectedCount} isRTL={isRTL} />
+            <HeroStatPill color="#c4b5fd" label={t('bankHomeTotalApplications')} value={totalCount} isRTL={isRTL} />
           </Animated.View>
         </View>
-
-        <Animated.View style={[styles.heroStatsGrid, {opacity: statsOpacity}]}>
-          <View style={[styles.heroChipsRow, isRTL && styles.heroChipsRowRTL]}>
-            <HeroChip
-              Icon={CheckCircle2}
-              color="#4ade80"
-              label={t('bankHomeCompletedToday')}
-              value={completedTodayCount}
-              isRTL={isRTL}
-            />
-            <HeroChip
-              Icon={XCircle}
-              color="#f87171"
-              label={t('bankHomeRejectedToday')}
-              value={rejectedTodayCount}
-              isRTL={isRTL}
-            />
-          </View>
-          <View style={[styles.heroChipsRow, isRTL && styles.heroChipsRowRTL]}>
-            <HeroChip
-              Icon={Layers}
-              color="#c4b5fd"
-              label={t('bankHomeTotalApplications')}
-              value={totalCount}
-              isRTL={isRTL}
-            />
-            <HeroChip
-              Icon={CircleDashed}
-              color="#93c5fd"
-              label={t('bankHomeNotStarted')}
-              value={notStartedCount}
-              isRTL={isRTL}
-            />
-          </View>
-        </Animated.View>
       </Animated.View>
 
       <View style={[styles.searchFilterRow, isRTL && styles.searchFilterRowRTL]}>
@@ -934,19 +1318,14 @@ const BankHomeScreen = () => {
               transform: [{translateY: slotAnim.interpolate({inputRange: [0, 1], outputRange: [6, 0]})}],
             },
           ]}>
-          {filterMode ? (
-            <View style={styles.dropdownSlot}>
-              <SelectField
-                value={FILTER_OPTIONS.find(f => f.value === activeFilter)}
-                options={FILTER_OPTIONS}
-                onSelect={opt => setActiveFilter(opt.value)}
-                getLabel={opt => t(opt.labelKey)}
-                getKey={opt => opt.value}
-              />
+          {isDateSearch ? (
+            <View style={[styles.dateInputsRow, isRTL && styles.dateInputsRowRTL]}>
+              {renderDateInput(t('bankFiltersFrom'), searchFrom, setSearchFrom, fromValid)}
+              {renderDateInput(t('bankFiltersTo'), searchTo, setSearchTo, toValid)}
             </View>
           ) : (
             <SearchInput
-              placeholder={t('bankSearchInputPlaceholder')}
+              placeholder={t(searchTypeMeta.placeholderKey || 'bankSearchInputPlaceholder')}
               value={search}
               onChangeText={setSearch}
             />
@@ -954,21 +1333,7 @@ const BankHomeScreen = () => {
         </Animated.View>
         <TouchableOpacity
           activeOpacity={1}
-          onPress={() => {
-            setFilterMode(prev => {
-              const next = !prev;
-              if (next) {
-                setDraftFilters(advancedFilters);
-                loadFilterOptions();
-                // Fold the hero away so the panel has vertical room — this
-                // chrome sits above the list and can't scroll.
-                setHeroCollapsed(true);
-              } else {
-                setHeroCollapsed(lastScrollYRef.current > COLLAPSE_SCROLL_THRESHOLD);
-              }
-              return next;
-            });
-          }}
+          onPress={openSheet}
           onPressIn={handleFilterPressIn}
           onPressOut={handleFilterPressOut}>
           <Animated.View
@@ -980,107 +1345,66 @@ const BankHomeScreen = () => {
                 transform: [{scale: filterPressScale}],
               },
             ]}>
-            <Animated.View style={{transform: [{rotate: filterIconRotateDeg}]}}>
-              <SlidersHorizontal size={18} color={filterMode ? '#fff' : COLORS.textMuted} />
-            </Animated.View>
+            <SlidersHorizontal size={18} color={hasAdvanced ? '#fff' : COLORS.textMuted} />
+            {hasAdvanced ? (
+              <View style={[styles.filterBadge, isRTL ? styles.filterBadgeRTL : null]}>
+                <Text style={styles.filterBadgeText}>{advCount}</Text>
+              </View>
+            ) : null}
           </Animated.View>
         </TouchableOpacity>
       </View>
 
-      {filterMode ? (
-        <View style={styles.filterPanel}>
-          {/* The hero/search/panel block sits ABOVE the FlatList as fixed
-              (non-scrolling) chrome, so the panel must scroll its own
-              content — otherwise it swallows the whole screen with no way
-              to reach its lower fields or the list. Actions stay pinned
-              below the scroll area. */}
-          <ScrollView
-            style={styles.filterPanelScroll}
-            showsVerticalScrollIndicator
-            keyboardShouldPersistTaps="handled">
-          <SelectField
-            label={t('bankFiltersSearchByLabel')}
-            value={SEARCH_TYPE_OPTIONS.find(o => o.value === draftFilters.searchType)}
-            options={SEARCH_TYPE_OPTIONS}
-            onSelect={opt => setDraft({searchType: opt.value})}
-            getLabel={opt => t(opt.labelKey)}
-            getKey={opt => String(opt.value)}
-          />
-          <SelectField
-            label={t('sendingCompanyLabel')}
-            value={draftFilters.sender || {id: null}}
-            options={[{id: null}, ...senderOptions]}
-            onSelect={opt => setDraft({sender: opt.id ? opt : null})}
-            getLabel={opt =>
-              opt.id ? (isRTL ? opt.nameInAr || opt.name : opt.name || opt.nameInAr) : t('selectAll')
-            }
-            getKey={opt => String(opt.id)}
-          />
-          <SelectField
-            label={t('bankFiltersReceiverLabel')}
-            value={draftFilters.receiver || {id: null}}
-            options={[{id: null}, ...receiverOptions]}
-            onSelect={opt => setDraft({receiver: opt.id ? opt : null})}
-            getLabel={opt =>
-              opt.id ? (isRTL ? opt.nameInAr || opt.name : opt.name || opt.nameInAr) : t('selectAll')
-            }
-            getKey={opt => String(opt.id)}
-          />
-          <SelectField
-            label={t('bankFiltersDateFieldLabel')}
-            value={DATE_FIELD_OPTIONS.find(o => o.value === draftFilters.dateField)}
-            options={DATE_FIELD_OPTIONS}
-            onSelect={opt => setDraft({dateField: opt.value})}
-            getLabel={opt => t(opt.labelKey)}
-            getKey={opt => String(opt.value)}
-          />
-          {draftFilters.dateField ? (
-            <View style={[styles.dateRow, isRTL && styles.dateRowRTL]}>
-              <View style={styles.dateField}>
-                <FormField
-                  label={t('bankFiltersFromDate')}
-                  value={draftFilters.startDate}
-                  onChangeText={v => setDraft({startDate: v})}
-                  placeholder="2026-01-01"
-                />
-              </View>
-              <View style={styles.dateField}>
-                <FormField
-                  label={t('bankFiltersToDate')}
-                  value={draftFilters.endDate}
-                  onChangeText={v => setDraft({endDate: v})}
-                  placeholder="2026-12-31"
-                />
-              </View>
-            </View>
-          ) : null}
-          <FilterCheckRow
-            label={t('includeCompletedApplications')}
-            checked={draftFilters.includeCompleted}
-            onToggle={() => setDraft({includeCompleted: !draftFilters.includeCompleted})}
+      <ScrollView
+        ref={chipScrollRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.chipsScroll}
+        contentContainerStyle={styles.chipsRow}
+        onContentSizeChange={() => {
+          if (isRTL) {
+            chipScrollRef.current?.scrollToEnd({animated: false});
+          }
+        }}>
+        {chipKeys.map(key => (
+          <StatusChip
+            key={key}
+            chipKey={key === 'all' ? null : key}
+            label={t(key === 'all' ? 'bankHomeFilterAll' : CATEGORY_STYLES[key].labelKey)}
+            count={chipCounts[key]}
+            active={activeFilter === key}
+            onPress={() => setActiveFilter(key)}
             isRTL={isRTL}
           />
-          <FilterCheckRow
-            label={t('includeRejectedApplications')}
-            checked={draftFilters.includeRejected}
-            onToggle={() => setDraft({includeRejected: !draftFilters.includeRejected})}
-            isRTL={isRTL}
-          />
-          </ScrollView>
-          <View style={[styles.filterActionsRow, isRTL && styles.filterActionsRowRTL]}>
-            <View style={styles.filterActionBtn}>
-              <PrimaryButton title={t('resetFiltersAction')} variant="secondary" onPress={resetAdvancedFilters} />
-            </View>
-            <View style={styles.filterActionBtn}>
-              <PrimaryButton title={t('applyFiltersAction')} onPress={applyDraftFilters} />
-            </View>
-          </View>
+        ))}
+      </ScrollView>
+
+      {activePills.length > 0 ? (
+        <View style={[styles.activePillsRow, isRTL && styles.activePillsRowRTL]}>
+          {activePills.map(pill => (
+            <ActiveFilterPill key={pill.key} label={pill.label} onClear={pill.clear} isRTL={isRTL} />
+          ))}
+          <TouchableOpacity onPress={clearAllAdvanced} hitSlop={{top: 6, bottom: 6}}>
+            <CustomText style={styles.clearAllText} paddingTop={0}>
+              {t('bankFiltersClearAll')}
+            </CustomText>
+          </TouchableOpacity>
         </View>
       ) : null}
 
-      <CustomText style={styles.sectionTitle} paddingTop={0}>
-        {t('bankHomeRecentApplications')}
-      </CustomText>
+      <View style={[styles.sectionRow, isRTL && styles.sectionRowRTL]}>
+        <CustomText style={styles.sectionTitle} paddingTop={0}>
+          {t('bankHomeRecentApplications')}
+        </CustomText>
+        <TouchableOpacity style={[styles.sortBtn, isRTL && styles.sortBtnRTL]} activeOpacity={0.7} onPress={toggleSort}>
+          <Animated.View style={{transform: [{rotate: sortRotate}]}}>
+            <ArrowUp size={13} color={COLORS.primaryDark} strokeWidth={2.4} />
+          </Animated.View>
+          <CustomText style={styles.sortBtnText} paddingTop={0}>
+            {t(sortDir === 'newest' ? 'bankSortNewest' : 'bankSortOldest')}
+          </CustomText>
+        </TouchableOpacity>
+      </View>
     </>
   );
 
@@ -1115,6 +1439,7 @@ const BankHomeScreen = () => {
         <FlatList
           data={applications}
           keyExtractor={item => item.id}
+          style={styles.list}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           ItemSeparatorComponent={() => <View style={{height: 10}} />}
@@ -1139,6 +1464,18 @@ const BankHomeScreen = () => {
           )}
         />
       )}
+
+      <AdvancedFilterSheet
+        visible={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        onApply={applyDraftFilters}
+        onResetDraft={() => setDraftFilters(DEFAULT_ADVANCED_FILTERS)}
+        draft={draftFilters}
+        setDraft={setDraft}
+        senderOptions={senderOptions}
+        receiverOptions={receiverOptions}
+        isRTL={isRTL}
+      />
     </SafeAreaView>
   );
 };
@@ -1176,6 +1513,7 @@ const styles = StyleSheet.create({
   },
   avatarText: {color: '#fff', fontWeight: '700', fontSize: 13},
 
+  list: {flex: 1},
   listContent: {paddingHorizontal: 16, paddingBottom: 30, flexGrow: 1},
 
   heroCard: {
@@ -1183,9 +1521,9 @@ const styles = StyleSheet.create({
     marginTop: 14,
     borderRadius: 20,
     backgroundColor: COLORS.primaryDark,
-    padding: 18,
     ...PRIMARY_SHADOW,
   },
+  heroContent: {flex: 1, padding: 18},
   heroTopRow: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'},
   heroTopRowRTL: {flexDirection: 'row-reverse'},
   heroTextCol: {flex: 1},
@@ -1197,7 +1535,7 @@ const styles = StyleSheet.create({
   // includeFontPadding: Android-only (no-op on iOS). These are plain Text
   // nodes (not CustomText), so nothing pins their line boxes — Android's
   // default font padding on Tajawal's tall metrics inflates every line and
-  // overflows the hero's fixed CARD_HEIGHT, clipping the bottom chip row.
+  // overflows the hero's fixed CARD_HEIGHT, clipping the bottom stat row.
   heroLabel: {
     color: COLORS.accent,
     fontSize: 11,
@@ -1206,7 +1544,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     includeFontPadding: false,
   },
-  heroNumber: {color: '#fff', fontSize: 40, fontWeight: '800', letterSpacing: -1.2, marginTop: 6, includeFontPadding: false},
+  heroNumber: {color: '#fff', fontSize: 38, fontWeight: '800', letterSpacing: -1.2, marginTop: 6, includeFontPadding: false},
   heroTrendText: {color: 'rgba(255,255,255,0.65)', fontSize: 12, fontWeight: '600', includeFontPadding: false},
   heroRingWrap: {width: RING_SIZE, height: RING_SIZE, alignItems: 'center', justifyContent: 'center'},
   heroRingCenter: {
@@ -1220,74 +1558,43 @@ const styles = StyleSheet.create({
   },
   heroRingText: {color: '#fff', fontSize: 15, fontWeight: '800', includeFontPadding: false},
 
-  heroStatsGrid: {marginTop: 18, gap: 10},
-  heroChipsRow: {flexDirection: 'row', gap: 10},
-  heroChipsRowRTL: {flexDirection: 'row-reverse'},
-  heroChip: {
+  heroStatsRow: {flexDirection: 'row', gap: 8, marginTop: 16},
+  heroStatsRowRTL: {flexDirection: 'row-reverse'},
+  heroStatPill: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
-  heroChipRTL: {flexDirection: 'row-reverse'},
-  heroChipIconWrap: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroChipTextRTL: {alignItems: 'flex-end'},
-  heroChipValue: {color: '#fff', fontSize: 14, fontWeight: '800', includeFontPadding: false},
-  heroChipLabel: {color: 'rgba(255,255,255,0.6)', fontSize: 10, fontWeight: '600', includeFontPadding: false},
+  heroStatValue: {fontSize: 14, fontWeight: '800', includeFontPadding: false},
+  heroStatLabel: {color: 'rgba(255,255,255,0.6)', fontSize: 10, fontWeight: '600', includeFontPadding: false, marginTop: 1},
 
-  filterPanel: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 14,
-    marginBottom: 16,
-    maxHeight: '56%',
-    ...CARD_SHADOW,
-  },
-  filterPanelScroll: {flexGrow: 0},
-  dateRow: {flexDirection: 'row', gap: 10},
-  dateRowRTL: {flexDirection: 'row-reverse'},
-  dateField: {flex: 1},
-  checkRow: {flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8},
-  checkRowRTL: {flexDirection: 'row-reverse'},
-  checkBox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.surface,
-  },
-  checkBoxChecked: {backgroundColor: COLORS.primary, borderColor: COLORS.primary},
-  checkMark: {color: '#fff', fontSize: 13, fontWeight: '700'},
-  checkLabel: {fontSize: 13, color: COLORS.text},
-  filterActionsRow: {flexDirection: 'row', gap: 10, marginTop: 10},
-  filterActionsRowRTL: {flexDirection: 'row-reverse'},
-  filterActionBtn: {flex: 1},
   searchFilterRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     gap: 8,
     marginHorizontal: 16,
-    marginTop: 18,
-    marginBottom: 20,
+    marginTop: 16,
+    marginBottom: 12,
   },
   searchFilterRowRTL: {flexDirection: 'row-reverse'},
   slotAnimWrap: {flex: 1},
-  dropdownSlot: {flex: 1, marginBottom: -14},
+  dateInputsRow: {flexDirection: 'row', gap: 8},
+  dateInputsRowRTL: {flexDirection: 'row-reverse'},
+  dateInputCol: {flex: 1},
+  dateInputLabel: {fontSize: 10, fontWeight: '700', color: COLORS.textMuted, marginBottom: 3, paddingHorizontal: 2},
+  dateInput: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    fontSize: 12.5,
+    color: COLORS.text,
+  },
+  dateInputInvalid: {borderColor: COLORS.danger},
   filterIconBtn: {
     width: 44,
     height: 44,
@@ -1298,25 +1605,115 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  filterBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: COLORS.danger,
+    borderWidth: 2,
+    borderColor: COLORS.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  filterBadgeRTL: {right: undefined, left: -5},
+  filterBadgeText: {color: '#fff', fontSize: 9, fontWeight: '800', includeFontPadding: false},
 
+  // flexShrink: 0 matters: this ScrollView sits in the screen's tight fixed
+  // column, and RN shrinks ScrollViews first when the column overflows —
+  // without it the chips get crushed to a sliver while the FlatList below
+  // takes the space. marginHorizontal (not contentContainer padding) keeps
+  // the row inside the same 16pt gutter as every other component — explicit
+  // user feedback: the chips must not run wider than the rest.
+  chipsScroll: {flexGrow: 0, flexShrink: 0, marginBottom: 10, marginHorizontal: 16},
+  chipsRow: {gap: 8},
+  statusChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 13,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1.5,
+  },
+  statusChipRTL: {flexDirection: 'row-reverse'},
+  statusChipLabel: {fontSize: 12.5, fontWeight: '700'},
+  statusChipCount: {fontSize: 12.5, fontWeight: '800', opacity: 0.75},
+
+  activePillsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+    marginHorizontal: 16,
+    marginBottom: 10,
+  },
+  activePillsRowRTL: {flexDirection: 'row-reverse'},
+  activePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.surfaceAlt,
+    borderWidth: 1,
+    borderColor: '#d9c4ea',
+    borderRadius: 999,
+    paddingVertical: 5,
+    paddingHorizontal: 6,
+  },
+  activePillRTL: {flexDirection: 'row-reverse'},
+  activePillText: {fontSize: 11.5, fontWeight: '700', color: COLORS.primaryDark, paddingHorizontal: 5},
+  activePillClear: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clearAllText: {fontSize: 11.5, fontWeight: '700', color: COLORS.textMuted, paddingHorizontal: 8},
+
+  sectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: 16,
+    marginBottom: 10,
+  },
+  sectionRowRTL: {flexDirection: 'row-reverse'},
   sectionTitle: {
     color: COLORS.text,
     fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-    marginHorizontal: 16,
-    marginBottom: 10,
   },
+  sortBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: COLORS.surfaceAlt,
+    borderRadius: 8,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+  },
+  sortBtnRTL: {flexDirection: 'row-reverse'},
+  sortBtnText: {fontSize: 11.5, fontWeight: '700', color: COLORS.primaryDark},
 
   card: {
+    flexDirection: 'row',
     backgroundColor: COLORS.surface,
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: COLORS.border,
+    overflow: 'hidden',
     ...CARD_SHADOW,
   },
+  cardRTL: {flexDirection: 'row-reverse'},
+  cardAccent: {width: 4},
+  cardBody: {flex: 1, paddingVertical: 14, paddingHorizontal: 14},
   cardTop: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'},
   cardTopRTL: {flexDirection: 'row-reverse'},
   cardLeft: {flex: 1, paddingRight: 12},
@@ -1339,7 +1736,7 @@ const styles = StyleSheet.create({
   overallBadgeDot: {width: 6, height: 6, borderRadius: 3},
   overallBadgeText: {fontSize: 12, fontWeight: '700'},
   // CustomText's own `lineHeight` prop (passed at each call site, not this
-  // style) always wins over whatever's set here — see the lineHeight={26}
+  // style) always wins over whatever's set here — see the lineHeight={20}
   // on the call site for why this can't just live in the StyleSheet.
   chevron: {fontSize: 20, color: COLORS.primaryLight, lineHeight: 20},
 
@@ -1354,6 +1751,119 @@ const styles = StyleSheet.create({
   roleBadgeRTL: {flexDirection: 'row-reverse'},
   roleBadgeDot: {width: 6, height: 6, borderRadius: 3},
   roleBadgeText: {fontSize: 11, fontWeight: '700'},
+
+  // The sheet floats as an inset card (side/bottom margins, fully rounded)
+  // rather than bleeding edge-to-edge — explicit user feedback ("touching
+  // the edges"), and it matches the app's card language anyway.
+  sheetRoot: {flex: 1, justifyContent: 'flex-end', paddingHorizontal: 10},
+  sheetBackdrop: {...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(26,15,38,0.45)'},
+  sheet: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 22,
+    paddingTop: 10,
+    paddingBottom: 18,
+    paddingHorizontal: 18,
+    ...makeShadow({y: -8, blur: 24, opacity: 0.18}),
+  },
+  sheetHandle: {
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.border,
+    alignSelf: 'center',
+    marginBottom: 12,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  sheetHeaderRTL: {flexDirection: 'row-reverse'},
+  sheetTitle: {fontSize: 16, fontWeight: '800', color: COLORS.text},
+  sheetCloseBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: COLORS.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetScroll: {flexGrow: 0},
+  sheetSectionLabel: {fontSize: 11.5, fontWeight: '700', color: COLORS.textMuted, marginBottom: 6},
+
+  searchTypeWrap: {flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16},
+  searchTypeWrapRTL: {flexDirection: 'row-reverse'},
+  searchTypeChip: {
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 9,
+    backgroundColor: COLORS.bg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  searchTypeChipActive: {backgroundColor: COLORS.primary, borderColor: COLORS.primary},
+  searchTypeChipText: {fontSize: 12, fontWeight: '700', color: COLORS.text},
+  searchTypeChipTextActive: {color: '#fff'},
+
+  typeaheadBlock: {marginBottom: 14},
+  typeaheadInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: COLORS.bg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  typeaheadInputRowRTL: {flexDirection: 'row-reverse'},
+  typeaheadInput: {flex: 1, fontSize: 13, color: COLORS.text, paddingVertical: 8},
+  typeaheadClear: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  suggestionList: {
+    marginTop: 4,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  suggestionRow: {
+    paddingVertical: 10,
+    paddingHorizontal: 13,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f4f0f8',
+  },
+  suggestionRowLast: {borderBottomWidth: 0},
+  suggestionText: {fontSize: 13, color: COLORS.text},
+  suggestionEmpty: {fontSize: 12.5, color: COLORS.textMuted, paddingVertical: 10, paddingHorizontal: 13},
+
+  checkRow: {flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8},
+  checkRowRTL: {flexDirection: 'row-reverse'},
+  checkBox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.surface,
+  },
+  checkBoxChecked: {backgroundColor: COLORS.primary, borderColor: COLORS.primary},
+  checkMark: {color: '#fff', fontSize: 13, fontWeight: '700'},
+  checkLabel: {fontSize: 13, color: COLORS.text},
+  filterActionsRow: {flexDirection: 'row', gap: 10, marginTop: 12},
+  filterActionsRowRTL: {flexDirection: 'row-reverse'},
+  filterActionBtn: {flex: 1},
 });
 
 export default BankHomeScreen;
