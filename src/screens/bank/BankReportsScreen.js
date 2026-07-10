@@ -1,5 +1,5 @@
 import React, {createContext, useContext, useEffect, useState, useCallback, useRef, useMemo} from 'react';
-import {View, StyleSheet, ScrollView, TouchableOpacity, useWindowDimensions, Animated, Easing} from 'react-native';
+import {View, Text, StyleSheet, ScrollView, TouchableOpacity, useWindowDimensions, Animated, Easing} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useTranslation} from 'react-i18next';
 import Svg, {Polyline} from 'react-native-svg';
@@ -12,6 +12,10 @@ import ErrorState from '../../components/ErrorState';
 import LoadingState from '../../components/LoadingState';
 import {COLORS, CARD_SHADOW} from '../../constants/theme';
 import {getBankReportsAnalytics} from '../../services/bank/bankReports';
+// Placeholder AML/risk data — there is no backend risk-screening endpoint
+// yet (see the file's own _comment). Kept next to this screen on purpose so
+// it's easy to find and swap for a real API call once that endpoint exists.
+import riskMockData from './riskMockData.json';
 
 // Native counterpart to ehsibly-frontend/src/pages/banks/BankReports.js.
 // That page uses Chart.js; there's no equivalent charting library pulled
@@ -22,6 +26,16 @@ import {getBankReportsAnalytics} from '../../services/bank/bankReports';
 // weekly/range pickers need native date-range UI this app doesn't have
 // yet, so they're left out rather than half-built.
 const PERIOD = {YEARLY: 'yearly', MONTHLY: 'monthly', DAILY: 'daily'};
+
+// Segmented sub-nav per the design_handoff_reports_tab package: Overview is
+// the whole pre-existing reports content; Origins and Risk are deliberately
+// minimal stubs awaiting their own designs (per the handoff's instruction
+// not to invent layouts for them).
+const REPORT_SECTIONS = [
+  {key: 'overview', labelKey: 'bankReportsSectionOverview'},
+  {key: 'origins', labelKey: 'bankReportsSectionOrigins'},
+  {key: 'risk', labelKey: 'bankReportsSectionRisk'},
+];
 
 const CATEGORY_COLORS = {
   total: COLORS.primary,
@@ -464,6 +478,7 @@ const BankReportsScreen = () => {
   }, []);
 
   const now = new Date();
+  const [section, setSection] = useState('overview');
   const [period, setPeriod] = useState(PERIOD.MONTHLY);
   const [year, setYear] = useState(now.getFullYear());
   // Stored as a Date at the 1st of the target month, so prev/next just
@@ -567,10 +582,36 @@ const BankReportsScreen = () => {
           {t('bankReports')}
         </CustomText>
 
+        <View style={[styles.sectionTabs, isRTL && styles.sectionTabsRTL]}>
+          {REPORT_SECTIONS.map(s => {
+            const active = section === s.key;
+            return (
+              <TouchableOpacity
+                key={s.key}
+                activeOpacity={0.8}
+                onPress={() => setSection(s.key)}
+                style={[styles.sectionTab, isRTL && styles.sectionTabRTL, active && styles.sectionTabActive]}>
+                <CustomText
+                  style={[styles.sectionTabText, active && styles.sectionTabTextActive]}
+                  paddingTop={0}>
+                  {t(s.labelKey)}
+                </CustomText>
+                {s.key === 'risk' ? (
+                  <View style={styles.sectionTabBadge}>
+                    <Text style={styles.sectionTabBadgeText}>{riskMockData.summary.openAlerts}</Text>
+                  </View>
+                ) : null}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {section === 'overview' ? (
         <View style={[styles.filterRow, isRTL && styles.filterRowRTL]}>
           <View style={styles.filterField}>
             <SelectField
               style={styles.filterSelect}
+              fieldStyle={styles.pillField}
               value={periodOptions.find(o => o.value === period)}
               options={periodOptions}
               onSelect={opt => setPeriod(opt.value)}
@@ -583,6 +624,7 @@ const BankReportsScreen = () => {
             <View style={styles.filterFieldNarrow}>
               <SelectField
                 style={styles.filterSelect}
+                fieldStyle={styles.pillField}
                 value={{value: year, label: String(year)}}
                 options={yearOptions.map(y => ({value: y, label: String(y)}))}
                 onSelect={opt => setYear(opt.value)}
@@ -620,8 +662,90 @@ const BankReportsScreen = () => {
             </View>
           )}
         </View>
+        ) : null}
 
-        {error ? (
+        {section === 'origins' ? (
+          // Stub only — the Origins section has no design yet (handoff says
+          // to ask for it rather than invent a layout here).
+          <View style={styles.stubCard}>
+            <CustomText style={styles.stubText} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+              {t('bankReportsPendingDesign')}
+            </CustomText>
+          </View>
+        ) : null}
+
+        {section === 'risk' ? (
+          // Minimal placeholder rendering of riskMockData.json (no real
+          // AML/risk endpoint exists yet) — intentionally plain, pending the
+          // section's actual design.
+          <>
+            <View style={styles.stubCard}>
+              <CustomText style={styles.stubText} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+                {t('bankRiskMockNote')}
+              </CustomText>
+            </View>
+
+            <View style={styles.statsGrid}>
+              <StatCard label={t('bankRiskOpenAlerts')} value={riskMockData.summary.openAlerts} color={COLORS.danger} />
+              <StatCard label={t('bankRiskAvgScore')} value={riskMockData.summary.avgRiskScore} color={COLORS.pending} />
+              <StatCard label={t('bankRiskWatchlist')} value={riskMockData.summary.watchlistMatches} color={COLORS.primary} />
+              <StatCard
+                label={t('bankRiskSanctioned')}
+                value={riskMockData.summary.sanctionedCorridors}
+                color={CATEGORY_COLORS.bawales}
+              />
+            </View>
+
+            <View style={styles.chartCard}>
+              <CustomText style={styles.riskCardTitle} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+                {t('bankRiskDistribution')}
+              </CustomText>
+              <View style={styles.riskDistList}>
+                {riskMockData.riskDistribution.map(bucket => (
+                  <View key={bucket.labelEn} style={[styles.riskDistRow, isRTL && styles.rowRTL]}>
+                    <View style={[styles.riskDistDotLabel, isRTL && styles.rowRTL]}>
+                      <View style={[styles.riskDistDot, {backgroundColor: bucket.color}]} />
+                      <CustomText style={styles.riskDistLabel} paddingTop={0}>
+                        {isRTL ? bucket.labelAr : bucket.labelEn}
+                      </CustomText>
+                    </View>
+                    <CustomText style={styles.riskDistValue} paddingTop={0}>
+                      {`${bucket.count} (${bucket.percent}%)`}
+                    </CustomText>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.chartCard}>
+              <CustomText style={styles.riskCardTitle} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+                {t('bankRiskFlagged')}
+              </CustomText>
+              <View style={styles.riskDistList}>
+                {riskMockData.flaggedTransactions.map(tx => (
+                  <View key={tx.id} style={styles.riskTxRow}>
+                    <View style={[styles.riskTxTopRow, isRTL && styles.rowRTL]}>
+                      <CustomText style={styles.riskTxSender} paddingTop={0}>
+                        {isRTL ? tx.senderAr : tx.senderEn}
+                      </CustomText>
+                      <CustomText style={styles.riskTxScore} paddingTop={0}>
+                        {`${t('bankRiskScoreLabel')}: ${tx.riskScore}`}
+                      </CustomText>
+                    </View>
+                    <CustomText style={styles.riskTxMeta} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+                      {`${isRTL ? tx.corridorAr : tx.corridorEn} — ${tx.amount.toLocaleString()} ${tx.currency}`}
+                    </CustomText>
+                    <CustomText style={styles.riskTxReasons} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+                      {(isRTL ? tx.reasonsAr : tx.reasonsEn).join(' • ')}
+                    </CustomText>
+                  </View>
+                ))}
+              </View>
+            </View>
+          </>
+        ) : null}
+
+        {section !== 'overview' ? null : error ? (
           <ErrorState message={error} onRetry={fetchAnalytics} />
         ) : isLoading ? (
           <LoadingState />
@@ -672,8 +796,75 @@ const styles = StyleSheet.create({
   scrollContent: {padding: 16, paddingBottom: 40},
   screenTitle: {fontSize: 20, fontWeight: '800', color: COLORS.text, marginBottom: 14},
 
+  // Segmented Overview/Origins/Risk sub-nav per design_handoff_reports_tab:
+  // one white pill card, active tab a solid dark-purple pill, Risk carrying
+  // a red open-alerts count badge.
+  sectionTabs: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.surface,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 4,
+    marginBottom: 12,
+    ...CARD_SHADOW,
+  },
+  sectionTabsRTL: {flexDirection: 'row-reverse'},
+  sectionTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  sectionTabRTL: {flexDirection: 'row-reverse'},
+  sectionTabActive: {backgroundColor: COLORS.primaryDark},
+  sectionTabText: {fontSize: 12.5, fontWeight: '700', color: COLORS.textMuted},
+  sectionTabTextActive: {color: '#fff'},
+  sectionTabBadge: {
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: COLORS.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  sectionTabBadgeText: {color: '#fff', fontSize: 9, fontWeight: '800', includeFontPadding: false},
+
+  stubCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 16,
+    marginBottom: 14,
+    ...CARD_SHADOW,
+  },
+  stubText: {fontSize: 13, color: COLORS.textMuted, fontWeight: '600'},
+
+  riskCardTitle: {fontSize: 13, fontWeight: '700', color: COLORS.text, textTransform: 'uppercase', letterSpacing: 0.5},
+  riskDistList: {marginTop: 12, gap: 10},
+  rowRTL: {flexDirection: 'row-reverse'},
+  riskDistRow: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
+  riskDistDotLabel: {flexDirection: 'row', alignItems: 'center', gap: 8},
+  riskDistDot: {width: 10, height: 10, borderRadius: 5},
+  riskDistLabel: {fontSize: 13, color: COLORS.text, fontWeight: '600'},
+  riskDistValue: {fontSize: 13, color: COLORS.textMuted, fontWeight: '700'},
+  riskTxRow: {borderTopWidth: 1, borderTopColor: COLORS.surfaceAlt, paddingTop: 10, gap: 3},
+  riskTxTopRow: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
+  riskTxSender: {fontSize: 13.5, fontWeight: '700', color: COLORS.text},
+  riskTxScore: {fontSize: 12, fontWeight: '700', color: COLORS.danger},
+  riskTxMeta: {fontSize: 12, color: COLORS.textMuted, fontWeight: '600'},
+  riskTxReasons: {fontSize: 11.5, color: COLORS.textMuted},
+
   filterRow: {flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap'},
   filterRowRTL: {flexDirection: 'row-reverse'},
+  // Pill treatment for the period dropdown + date stepper per the handoff
+  // screenshot (fully rounded white cards with the standard border).
+  pillField: {borderRadius: 999},
   filterField: {minWidth: 130},
   filterFieldNarrow: {minWidth: 100},
   // SelectField carries its own form-layout bottom margin; inside this
@@ -685,7 +876,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     backgroundColor: COLORS.surface,
-    borderRadius: 10,
+    borderRadius: 999,
     borderWidth: 1,
     borderColor: COLORS.border,
     paddingHorizontal: 8,

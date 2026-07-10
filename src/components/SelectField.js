@@ -8,6 +8,8 @@ import {COLORS} from '../constants/theme';
 // A labeled field that looks like FormField but opens a modal list instead
 // of a keyboard — for a handful of options (currency, bank account, etc.)
 // where a real dropdown reads much clearer than a row of chips.
+// `fieldStyle` styles the tappable box itself (e.g. a pill borderRadius),
+// unlike `style`, which wraps the whole label+field group.
 const SelectField = ({
   label,
   required,
@@ -19,6 +21,7 @@ const SelectField = ({
   getKey = String,
   disabled = false,
   style,
+  fieldStyle,
 }) => {
   const {currentDirection} = useContext(LanguageContext);
   const isRTL = currentDirection === 'rtl';
@@ -34,7 +37,7 @@ const SelectField = ({
         </CustomText>
       ) : null}
       <TouchableOpacity
-        style={[styles.field, isRTL && styles.fieldRTL, disabled && styles.fieldDisabled]}
+        style={[styles.field, isRTL && styles.fieldRTL, disabled && styles.fieldDisabled, fieldStyle]}
         activeOpacity={0.7}
         disabled={disabled}
         onPress={() => setVisible(true)}>
