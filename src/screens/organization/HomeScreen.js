@@ -46,7 +46,11 @@ const HomeScreen = () => {
       return null;
     }
     const weight = StyleSheet.flatten(stylesToCheck)?.fontWeight;
-    return tajawalStyleForWeight(weight);
+    // letterSpacing: 0 for Arabic-script text: positive tracking breaks
+    // Sorani Kurdish into disconnected isolated glyphs on iOS (see
+    // BankHomeScreen's af() for the full story), and letter-spacing a
+    // cursive script is wrong typographically anyway.
+    return {...tajawalStyleForWeight(weight), letterSpacing: 0};
   };
 
   const [search, setSearch] = useState('');

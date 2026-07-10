@@ -17,8 +17,10 @@ export default function App() {
   const [currentDirection, setCurrentDirection] = useState('rtl');
   const {i18n, t} = useTranslation();
 
+  // Arabic and Sorani Kurdish (ckb) are both Arabic-script RTL languages;
+  // everything else (currently English) lays out LTR.
   const changeDirection = language => {
-    setCurrentDirection(language === 'ar' ? 'rtl' : 'ltr');
+    setCurrentDirection(['ar', 'ckb'].includes(language) ? 'rtl' : 'ltr');
   };
 
   useEffect(() => {

@@ -1076,7 +1076,12 @@ const BankHomeScreen = () => {
       return null;
     }
     const weight = StyleSheet.flatten(stylesToCheck)?.fontWeight;
-    return tajawalStyleForWeight(weight);
+    // letterSpacing: 0 matters for Arabic-script text: positive tracking on
+    // the header labels breaks Sorani Kurdish into disconnected isolated
+    // glyphs on iOS (Kurdish letters like ە/ێ fall on kern-split run
+    // boundaries), and letter-spacing a cursive script is typographically
+    // wrong anyway. Uppercase-style tracking only makes sense for Latin.
+    return {...tajawalStyleForWeight(weight), letterSpacing: 0};
   };
 
   const {awaitingCount, completedCount, rejectedCount, totalCount} = heroStats;

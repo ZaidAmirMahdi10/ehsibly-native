@@ -82,6 +82,14 @@ const SettingsScreen = () => {
             <SettingsRow
               icon={Languages}
               iconColor={COLORS.primary}
+              label={t('kurdish')}
+              onPress={() => changeLanguage('ckb')}
+              trailing={checkFor('ckb')}
+              isRTL={isRTL}
+            />
+            <SettingsRow
+              icon={Languages}
+              iconColor={COLORS.primary}
               label={t('english')}
               onPress={() => changeLanguage('en')}
               trailing={checkFor('en')}
