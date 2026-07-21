@@ -43,8 +43,6 @@
 			</dict>
 		</dict>
 	</dict>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string/>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Alexandria-Black.ttf</string>
