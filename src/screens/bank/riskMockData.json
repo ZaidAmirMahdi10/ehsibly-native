@@ -1,0 +1,53 @@
+{
+  "_comment": "Placeholder/mock data for the AML & Risk tab — no real backend endpoint exists yet. Wire real data when available; this file exists so the UI has something to render meanwhile.",
+  "summary": {
+    "openAlerts": 3,
+    "avgRiskScore": 71,
+    "watchlistMatches": 1,
+    "sanctionedCorridors": 1
+  },
+  "riskDistribution": [
+    { "labelAr": "منخفضة", "labelEn": "Low", "count": 214, "percent": 58, "color": "#2db87a" },
+    { "labelAr": "متوسطة", "labelEn": "Medium", "count": 74, "percent": 22, "color": "#E8B331" },
+    { "labelAr": "مرتفعة", "labelEn": "High", "count": 26, "percent": 13, "color": "#E76F51" },
+    { "labelAr": "حرجة", "labelEn": "Critical", "count": 8, "percent": 7, "color": "#B5347A" }
+  ],
+  "flaggedTransactions": [
+    {
+      "id": "risk-001",
+      "senderAr": "شركة نيكسا للشحن",
+      "senderEn": "Nexa Freight Co.",
+      "corridorAr": "بغداد ← إسطنبول",
+      "corridorEn": "Baghdad → Istanbul",
+      "amount": 42800,
+      "currency": "USD",
+      "riskScore": 88,
+      "reasonsAr": ["مسار ضمن القائمة الخاضعة للعقوبات", "مبلغ أقل بقليل من الحد المقرر"],
+      "reasonsEn": ["Sanctioned-list corridor", "Amount just under threshold"]
+    },
+    {
+      "id": "risk-002",
+      "senderAr": "شركة ميريديان للأنسجة",
+      "senderEn": "Meridian Textiles",
+      "corridorAr": "البصرة ← دبي",
+      "corridorEn": "Basra → Dubai",
+      "amount": 15600,
+      "currency": "USD",
+      "riskScore": 71,
+      "reasonsAr": ["تطابق اسم مع قائمة المراقبة"],
+      "reasonsEn": ["Watchlist name match"]
+    },
+    {
+      "id": "risk-003",
+      "senderAr": "شركة كيسترل للنقل واللوجستيات",
+      "senderEn": "Kestrel Logistics",
+      "corridorAr": "بغداد ← بيروت",
+      "corridorEn": "Baghdad → Beirut",
+      "amount": 9200,
+      "currency": "USD",
+      "riskScore": 54,
+      "reasonsAr": ["نمط تجزئة للمبالغ", "مستفيد جديد"],
+      "reasonsEn": ["Structuring pattern", "New beneficiary"]
+    }
+  ]
+}
