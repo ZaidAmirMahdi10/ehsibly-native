@@ -130,6 +130,15 @@ const InvoiceDetailScreen = () => {
     } catch (err) {
       // Non-fatal — the screen keeps showing the last known state.
     }
+    // loadPaymentDetail/loadInvoiceDocs only re-run automatically when
+    // invoice.id or invoice.latestPaymentDetail?.id changes — but editing an
+    // existing NOT_SENT/REJECTED application (the common case) updates that
+    // same payment row in place, so the id never changes. Without an explicit
+    // reload here, coming back from "Edit Request" would keep showing
+    // whatever bank-form list was loaded on this screen's first mount, no
+    // matter how many times the application gets regenerated.
+    loadPaymentDetail();
+    loadInvoiceDocs();
   };
 
   const loadInvoiceDocs = async () => {

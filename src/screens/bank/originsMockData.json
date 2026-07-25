@@ -1,0 +1,98 @@
+{
+  "_comment": "Placeholder/mock data for the Reports tab's Origins section — no real 'transfers by sender city' endpoint exists yet (see design_handoff_reports README). Marker left/top are percentage positions over assets/iraq-map.png; wire real data when the backend provides a companies-by-city breakdown.",
+  "stats": {
+    "newSenders": 4,
+    "flagged": 1
+  },
+  "cities": [
+    {
+      "id": "baghdad",
+      "cityEn": "Baghdad",
+      "cityAr": "بغداد",
+      "left": 51.9,
+      "top": 48.5,
+      "count": 41,
+      "amount": 218400,
+      "trend": 12,
+      "color": "#2db87a",
+      "companies": [
+        {"nameEn": "Nexa Freight Co.", "nameAr": "شركة نيكسا للشحن", "amount": 88400, "count": 19},
+        {"nameEn": "Al-Rasheed Traders for General Contracting & Trading Co.", "nameAr": "شركة الرشيد للمقاولات والتجارة العامة", "amount": 74200, "count": 14},
+        {"nameEn": "Kestrel Logistics", "nameAr": "كيسترل للنقل واللوجستيات", "amount": 55800, "count": 8}
+      ]
+    },
+    {
+      "id": "basra",
+      "cityEn": "Basra",
+      "cityAr": "البصرة",
+      "left": 74.7,
+      "top": 73.0,
+      "count": 27,
+      "amount": 96200,
+      "trend": 6,
+      "color": "#3D9DD9",
+      "companies": [
+        {"nameEn": "Meridian Textiles and Ready-Made Garments Trading Company", "nameAr": "شركة ميريديان للأنسجة والملابس الجاهزة", "amount": 61300, "count": 17},
+        {"nameEn": "Basra Marine Supply", "nameAr": "البصرة للتجهيزات البحرية", "amount": 34900, "count": 10}
+      ]
+    },
+    {
+      "id": "mosul",
+      "cityEn": "Mosul",
+      "cityAr": "الموصل",
+      "left": 46.4,
+      "top": 16.1,
+      "count": 19,
+      "amount": 74800,
+      "trend": -4,
+      "color": "#E8B331",
+      "companies": [
+        {"nameEn": "Sindbad Exports", "nameAr": "صادرات السندباد", "amount": 41200, "count": 11},
+        {"nameEn": "Tigris Agro Co.", "nameAr": "شركة دجلة الزراعية", "amount": 33600, "count": 8}
+      ]
+    },
+    {
+      "id": "erbil",
+      "cityEn": "Erbil",
+      "cityAr": "أربيل",
+      "left": 53.1,
+      "top": 16.1,
+      "count": 8,
+      "amount": 61300,
+      "trend": 3,
+      "color": "#3D9DD9",
+      "companies": [
+        {"nameEn": "Baghdad Steel Works", "nameAr": "بغداد لأعمال الصلب", "amount": 61300, "count": 8}
+      ]
+    },
+    {
+      "id": "najaf",
+      "cityEn": "Najaf",
+      "cityAr": "النجف",
+      "left": 44.3,
+      "top": 62.0,
+      "count": 13,
+      "amount": 39750,
+      "trend": -9,
+      "color": "#E76F51",
+      "companies": [
+        {"nameEn": "Sindbad Exports", "nameAr": "صادرات السندباد", "amount": 22400, "count": 6},
+        {"nameEn": "Tigris Agro Co.", "nameAr": "شركة دجلة الزراعية", "amount": 17350, "count": 7}
+      ]
+    },
+    {
+      "id": "nasiriyah",
+      "cityEn": "Nasiriyah",
+      "cityAr": "الناصرية",
+      "left": 60.2,
+      "top": 70.3,
+      "count": 5,
+      "amount": 18900,
+      "trend": 1,
+      "color": "#B5347A",
+      "companies": [
+        {"nameEn": "Basra Marine Supply", "nameAr": "البصرة للتجهيزات البحرية", "amount": 18900, "count": 5}
+      ]
+    }
+  ]
+}

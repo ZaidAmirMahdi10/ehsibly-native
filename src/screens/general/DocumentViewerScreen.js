@@ -3,12 +3,14 @@ import {StatusBar, StyleSheet, TouchableOpacity, View, Image} from 'react-native
 import {SafeAreaView, useSafeAreaInsets} from 'react-native-safe-area-context';
 import Pdf from 'react-native-pdf';
 import RNFS from 'react-native-fs';
+import Share from 'react-native-share';
 import {useRoute, useNavigation} from '@react-navigation/native';
 import {useTranslation} from 'react-i18next';
 import {fromByteArray} from 'base64-js';
 
 import {LanguageContext} from '../../../App';
 import CustomText from '../../components/CustomText';
+import PrimaryButton from '../../components/PrimaryButton';
 import ErrorState from '../../components/ErrorState';
 import LoadingState from '../../components/LoadingState';
 import apiClient from '../../services/apiClient';
@@ -19,11 +21,18 @@ import {COLORS} from '../../constants/theme';
 // guaranteed to still expose plain numeric fields at render time.
 const HEADER_BASE_PADDING_TOP = 12;
 
-const extensionForContentType = contentType => {
-  if (contentType.includes('pdf')) return 'pdf';
-  if (contentType.includes('png')) return 'png';
-  if (contentType.includes('jpeg') || contentType.includes('jpg')) return 'jpg';
-  return 'bin';
+// Maps a response content-type to {ext, kind}. `kind` drives which renderer
+// the screen uses: 'pdf'/'image' can be previewed inline; anything else
+// (Word bank forms, in practice) has no native inline renderer, so it gets
+// the open/download panel instead of a failed preview.
+const fileInfoForContentType = contentType => {
+  if (contentType.includes('pdf')) return {ext: 'pdf', kind: 'pdf'};
+  if (contentType.includes('png')) return {ext: 'png', kind: 'image'};
+  if (contentType.includes('jpeg') || contentType.includes('jpg')) return {ext: 'jpg', kind: 'image'};
+  if (contentType.includes('wordprocessingml.document')) return {ext: 'docx', kind: 'other'};
+  if (contentType.includes('msword')) return {ext: 'doc', kind: 'other'};
+  if (contentType.includes('spreadsheetml.sheet')) return {ext: 'xlsx', kind: 'other'};
+  return {ext: 'bin', kind: 'other'};
 };
 
 // The backend's file route (getInvoiceFile/:docId) isn't a presigned URL —
@@ -54,7 +63,8 @@ const DocumentViewerScreen = () => {
   const {url, title} = route.params;
 
   const [fileUri, setFileUri] = useState(null);
-  const [isPdf, setIsPdf] = useState(true);
+  const [fileKind, setFileKind] = useState('pdf');
+  const [mimeType, setMimeType] = useState('application/octet-stream');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -65,15 +75,34 @@ const DocumentViewerScreen = () => {
       const response = await apiClient.get(url, {responseType: 'arraybuffer'});
       const contentType = response.headers['content-type'] || 'application/octet-stream';
       const base64 = fromByteArray(new Uint8Array(response.data));
-      const ext = extensionForContentType(contentType);
-      const path = `${RNFS.CachesDirectoryPath}/doc-preview-${Date.now()}.${ext}`;
+      const {ext, kind} = fileInfoForContentType(contentType);
+      // A real named file (not a bare temp path) so the OS share sheet /
+      // "Open in Word" shows a sensible filename instead of a random blob.
+      // Only strip characters that are actually illegal in a filename —
+      // an earlier \w-only version silently ate Arabic titles entirely,
+      // leaving files named just "--1784407183309.docx".
+      const safeTitle = (title || 'document').replace(/[\\/:*?"<>|]+/g, '-').trim();
+      const path = `${RNFS.CachesDirectoryPath}/${safeTitle}-${Date.now()}.${ext}`;
       await RNFS.writeFile(path, base64, 'base64');
-      setIsPdf(contentType.includes('pdf'));
+      setMimeType(contentType);
+      setFileKind(kind);
       setFileUri(`file://${path}`);
     } catch (err) {
       setError(true);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openOrSaveDocument = async () => {
+    try {
+      await Share.open({url: fileUri, type: mimeType, filename: title, failOnCancel: false});
+    } catch (err) {
+      // failOnCancel:false already swallows a plain user cancel; anything
+      // else here is a real share-sheet failure worth surfacing.
+      if (err?.message && !/cancel/i.test(err.message)) {
+        setError(true);
+      }
     }
   };
 
@@ -106,15 +135,32 @@ const DocumentViewerScreen = () => {
         </View>
       ) : error ? (
         <ErrorState message={t('documentLoadErrorMessage')} onRetry={load} />
-      ) : isPdf ? (
+      ) : fileKind === 'pdf' ? (
         <Pdf source={{uri: fileUri}} style={styles.flex} onError={() => setError(true)} />
-      ) : (
+      ) : fileKind === 'image' ? (
         <Image
           source={{uri: fileUri}}
           style={styles.flex}
           resizeMode="contain"
           onError={() => setError(true)}
         />
+      ) : (
+        <View style={styles.openPanel}>
+          <CustomText center style={styles.openIcon} lineHeight={56} paddingTop={0}>
+            📄
+          </CustomText>
+          <CustomText center bold style={styles.openTitle}>
+            {t('documentReadyTitle')}
+          </CustomText>
+          <CustomText center style={styles.openMessage}>
+            {t('documentReadyMessage')}
+          </CustomText>
+          <PrimaryButton
+            title={t('openOrSaveDocumentAction')}
+            onPress={openOrSaveDocument}
+            style={styles.openBtn}
+          />
+        </View>
       )}
     </SafeAreaView>
   );
@@ -146,6 +192,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.bg,
+  },
+  openPanel: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
+  openIcon: {
+    fontSize: 56,
+    marginBottom: 16,
+  },
+  openTitle: {
+    fontSize: 18,
+    color: COLORS.text,
+    marginBottom: 8,
+  },
+  openMessage: {
+    fontSize: 14,
+    color: COLORS.textMuted,
+    marginBottom: 28,
+  },
+  openBtn: {
+    width: '100%',
+    minHeight: 56,
   },
 });
 
