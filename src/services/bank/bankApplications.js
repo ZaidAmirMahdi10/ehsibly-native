@@ -8,10 +8,19 @@ const route = 'bankAndSubcompany';
 // CALLING user's own sub-companies, which is empty for most bank staff and
 // reads as "no data" for what's meant to be an org-wide dashboard. Passing
 // 'All' explicitly is required to see every application in the organization.
+//
+// omitUserIdHeader is equally required: the backend independently re-scopes
+// by the raw `user-id` header (regardless of creatorUserId='All' above) to
+// just that one person's own creator/auditor/executor assignments — the web
+// app only sends that header under its own explicit "my transactions"
+// toggle, which this screen doesn't have. Without omitting it here, every
+// bank-side login (org/bank admin, auditor, executor — anyone without
+// something already assigned to them) sees an empty or errored list. See
+// apiClient.js's request interceptor for the full explanation.
 export const getBankApplications = async ({signal, ...params} = {}) => {
   const response = await apiClient.get(
     `${route}/getBankMultiContainersInvoices`,
-    {params: {creatorUserId: 'All', ...params}, signal},
+    {params: {creatorUserId: 'All', ...params}, signal, omitUserIdHeader: true},
   );
   return response.data;
 };

@@ -68,7 +68,19 @@ apiClient.interceptors.request.use(config => {
   // over it by sending the literal string "NaN" (parseInt(null) in its own
   // code) — matching that here, since the backend's downstream `isNaN(userId)`
   // fallback to organizationId already accounts for it.
-  if (currentSession?.token) {
+  //
+  // `omitUserIdHeader: true` opts a request OUT of this entirely — needed by
+  // bank-wide endpoints (getBankMultiContainersInvoices) whose controller
+  // treats a *present* user-id header as "scope results to just this one
+  // person's own creator/auditor/executor assignments". The reference web
+  // app only ever sends that header when its own explicit "my transactions"
+  // toggle is on, and sends null otherwise; this app has no such toggle, so
+  // every request was unintentionally personal-scoped — empty for any staff
+  // account with nothing assigned to them yet, and a hard 500 for a bare
+  // "organization"/bank login (session.userId is null → header 'NaN' →
+  // truthy → the backend parses it to NaN and crashes on a later
+  // `prisma.user.update({where: {id: NaN}})`).
+  if (currentSession?.token && !config.omitUserIdHeader) {
     config.headers['user-id'] = currentSession.userId ?? 'NaN';
   }
   return config;
