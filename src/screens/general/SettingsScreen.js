@@ -1,9 +1,9 @@
 import React, {useContext} from 'react';
-import {View, ScrollView, StyleSheet, TouchableOpacity} from 'react-native';
+import {View, ScrollView, StyleSheet, TouchableOpacity, Linking} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useTranslation} from 'react-i18next';
 import {useNavigation} from '@react-navigation/native';
-import {Languages, Code, LogOut, ChevronLeft, ChevronRight} from 'lucide-react-native';
+import {Languages, Code, ShieldCheck, LogOut, ChevronLeft, ChevronRight} from 'lucide-react-native';
 
 import {LanguageContext} from '../../../App';
 import CustomText from '../../components/CustomText';
@@ -12,6 +12,11 @@ import {useAlert} from '../../context/AlertContext';
 import {COLORS, CARD_SHADOW} from '../../constants/theme';
 
 const APP_VERSION = '1.0.0-phaseA';
+
+// Hosted privacy policy (see "The landing Page/privacy.html", served from the
+// same Hostinger site as ehsibly.alhabbar.tech). Also the URL declared as the
+// App Store / Play Store Privacy Policy URL — kept as one source of truth.
+const PRIVACY_POLICY_URL = 'https://ehsibly.alhabbar.tech/privacy.html';
 
 // A tappable settings row: leading icon chip, label, trailing chevron (or
 // any custom trailing node, e.g. the language checkmarks).
@@ -109,6 +114,13 @@ const SettingsScreen = () => {
               iconColor={COLORS.primary}
               label={t('aboutTheDeveloper')}
               onPress={() => navigation.navigate('AboutDeveloper')}
+              isRTL={isRTL}
+            />
+            <SettingsRow
+              icon={ShieldCheck}
+              iconColor={COLORS.primary}
+              label={t('privacyPolicy')}
+              onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
               isRTL={isRTL}
               last
             />

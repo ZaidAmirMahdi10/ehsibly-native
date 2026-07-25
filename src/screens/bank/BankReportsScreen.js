@@ -1,8 +1,8 @@
 import React, {createContext, useContext, useEffect, useState, useCallback, useRef, useMemo} from 'react';
-import {View, Text, StyleSheet, ScrollView, TouchableOpacity, useWindowDimensions, Animated, Easing} from 'react-native';
+import {View, Text, Image, StyleSheet, ScrollView, TouchableOpacity, useWindowDimensions, Animated, Easing} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useTranslation} from 'react-i18next';
-import Svg, {Polyline} from 'react-native-svg';
+import Svg, {Polyline, Defs, LinearGradient as SvgLinearGradient, Rect, Stop} from 'react-native-svg';
 import {ChevronLeft, ChevronRight, ChevronDown} from 'lucide-react-native';
 
 import {LanguageContext} from '../../../App';
@@ -10,12 +10,13 @@ import CustomText from '../../components/CustomText';
 import SelectField from '../../components/SelectField';
 import ErrorState from '../../components/ErrorState';
 import LoadingState from '../../components/LoadingState';
-import {COLORS, CARD_SHADOW} from '../../constants/theme';
+import {COLORS, CARD_SHADOW, makeShadow} from '../../constants/theme';
 import {getBankReportsAnalytics} from '../../services/bank/bankReports';
-// Placeholder AML/risk data — there is no backend risk-screening endpoint
-// yet (see the file's own _comment). Kept next to this screen on purpose so
-// it's easy to find and swap for a real API call once that endpoint exists.
+// Placeholder AML/risk + origins data — there are no backend endpoints for
+// either yet (see each file's own _comment). Kept next to this screen on
+// purpose so they're easy to find and swap for real API calls.
 import riskMockData from './riskMockData.json';
+import originsMockData from './originsMockData.json';
 
 // Native counterpart to ehsibly-frontend/src/pages/banks/BankReports.js.
 // That page uses Chart.js; there's no equivalent charting library pulled
@@ -43,9 +44,15 @@ const CATEGORY_COLORS = {
   executed: '#f9c058',
   bawales: '#03a9f4',
   pending: COLORS.pending,
-  notStarted: COLORS.textMuted,
+  // Dark purple per the design_handoff_reports Overview spec (was muted
+  // gray) — applies to both the stat card's top border and its bar.
+  notStarted: COLORS.primaryDark,
   rejected: COLORS.danger,
 };
+
+// Risk score severity colors from the handoff: amber <60, coral 60–79,
+// magenta ≥80.
+const riskScoreColor = score => (score >= 80 ? '#B5347A' : score >= 60 ? '#E76F51' : '#E8B331');
 
 const CURRENCY_COLORS = {USD: COLORS.success, EUR: '#3498db', AED: '#e67e22'};
 
@@ -133,21 +140,194 @@ const RevealCard = ({controller, style, children}) => {
   );
 };
 
-const StatCard = ({label, value, color}) => (
-  <View style={[styles.statCard, {borderTopColor: color}]}>
+// The colored accent is an absolutely-positioned strip clipped by the
+// card's own borderRadius (overflow: hidden) rather than a borderTopWidth:
+// iOS renders an uneven border (3,0,0,0) by sweeping the top color around
+// the full corner arc, which reads as a thick "pill" instead of the
+// reference's thin line hugging the rounded corners.
+const StatCard = ({label, value, color, wide}) => (
+  <View style={[styles.statCard, wide && styles.statCardWide]}>
+    <View style={[styles.statCardAccent, {backgroundColor: color}]} />
     {/* CustomText's default lineHeight (20) clips a bold 20px digit in the
         English font's metrics — same issue BankHomeScreen.js's hero number
         works around, just via an explicit lineHeight here instead of
         switching to plain Text, since this value doesn't need af()'s
-        Arabic-weight font resolution. */}
-    <CustomText style={styles.statValue} paddingTop={0} lineHeight={26}>
+        Arabic-weight font resolution. The tight label lineHeight keeps the
+        card as compact as the reference screenshot. */}
+    <CustomText style={styles.statValue} paddingTop={0} lineHeight={25}>
       {value}
     </CustomText>
-    <CustomText style={styles.statLabel} paddingTop={2}>
+    <CustomText style={styles.statLabel} paddingTop={2} lineHeight={15}>
       {label}
     </CustomText>
   </View>
 );
+
+// One "Top sender cities" row: tap to expand the city's sending companies
+// inline. Pure Animated maxHeight/opacity — never LayoutAnimation on this
+// screen (react-native-svg subtree = native Fabric SIGABRT, see ChartCard).
+const OriginCityRow = ({city, isRTL, expanded, onToggle}) => {
+  const {t} = useTranslation();
+  const expandAnim = useRef(new Animated.Value(expanded ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.timing(expandAnim, {
+      toValue: expanded ? 1 : 0,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [expandAnim, expanded]);
+
+  const trendUp = city.trend >= 0;
+  const Chevron = expanded ? ChevronDown : isRTL ? ChevronLeft : ChevronRight;
+
+  return (
+    <TouchableOpacity style={styles.originCityRow} activeOpacity={0.8} onPress={onToggle}>
+      <View style={[styles.originCityTop, isRTL && styles.rowRTL]}>
+        <View style={[styles.originCityDot, {backgroundColor: city.color}]} />
+        <View style={styles.originCityInfo}>
+          <CustomText style={styles.originCityName} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+            {isRTL ? city.cityAr : city.cityEn}
+          </CustomText>
+          <CustomText style={styles.originCityCount} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+            {t('bankOriginsTransfersCount', {count: city.count})}
+          </CustomText>
+        </View>
+        <View style={isRTL ? styles.originCityAmountRTL : styles.originCityAmount}>
+          <CustomText style={styles.originCityAmountText} paddingTop={0}>
+            {`$${city.amount.toLocaleString()}`}
+          </CustomText>
+          <CustomText
+            style={[styles.originCityTrend, {color: trendUp ? COLORS.success : COLORS.danger}]}
+            paddingTop={0}>
+            {t(trendUp ? 'bankOriginsTrendUp' : 'bankOriginsTrendDown', {percent: Math.abs(city.trend)})}
+          </CustomText>
+        </View>
+        <Chevron size={14} color="#a89bb0" />
+      </View>
+      <Animated.View
+        style={{
+          maxHeight: expandAnim.interpolate({inputRange: [0, 1], outputRange: [0, 200]}),
+          opacity: expandAnim,
+          overflow: 'hidden',
+        }}>
+        <View style={styles.originCompanyList}>
+          {city.companies.map(co => (
+            <View key={co.nameEn} style={[styles.originCompanyRow, isRTL && styles.rowRTL]}>
+              <CustomText
+                style={styles.originCompanyName}
+                paddingTop={0}
+                numberOfLines={1}
+                align={isRTL ? 'right' : 'left'}>
+                {isRTL ? co.nameAr : co.nameEn}
+              </CustomText>
+              <CustomText style={styles.originCompanyMeta} paddingTop={0}>
+                {`$${co.amount.toLocaleString()} · ${co.count}`}
+              </CustomText>
+            </View>
+          ))}
+        </View>
+      </Animated.View>
+    </TouchableOpacity>
+  );
+};
+
+// One flagged transaction card: score ring toggles the inline factor
+// breakdown; Clear and Escalate both just dismiss the card locally for now
+// (mock/prototype behavior — resets on reload).
+// TODO: route Escalate to the bank's real escalation/ticketing flow once
+// one exists; there is no backend for it yet (see the handoff README).
+const RiskFlaggedCard = ({tx, isRTL, expanded, onToggleBreakdown, onDismiss}) => {
+  const {t} = useTranslation();
+  const breakdownAnim = useRef(new Animated.Value(expanded ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.timing(breakdownAnim, {
+      toValue: expanded ? 1 : 0,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [breakdownAnim, expanded]);
+
+  const scoreColor = riskScoreColor(tx.riskScore);
+
+  return (
+    <View style={[styles.riskTxCard, tx.riskScore >= 80 && styles.riskTxCardCritical]}>
+      <View style={[styles.riskTxHeader, isRTL && styles.rowRTL]}>
+        <View style={styles.riskTxInfo}>
+          <CustomText style={styles.riskTxSender} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+            {isRTL ? tx.senderAr : tx.senderEn}
+          </CustomText>
+          <CustomText style={styles.riskTxMeta} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+            {`${isRTL ? tx.corridorAr : tx.corridorEn} · $${tx.amount.toLocaleString()}`}
+          </CustomText>
+        </View>
+        <TouchableOpacity
+          style={[styles.scoreRing, {borderColor: scoreColor}]}
+          activeOpacity={0.7}
+          onPress={onToggleBreakdown}>
+          <CustomText style={[styles.scoreRingText, {color: scoreColor}]} paddingTop={0} lineHeight={16}>
+            {tx.riskScore}
+          </CustomText>
+        </TouchableOpacity>
+      </View>
+
+      <View style={[styles.reasonTagsRow, isRTL && styles.rowRTL]}>
+        {(isRTL ? tx.reasonsAr : tx.reasonsEn).map(reason => (
+          <View key={reason} style={styles.reasonTag}>
+            <CustomText style={styles.reasonTagText} paddingTop={0}>
+              {reason}
+            </CustomText>
+          </View>
+        ))}
+      </View>
+
+      <Animated.View
+        style={{
+          maxHeight: breakdownAnim.interpolate({inputRange: [0, 1], outputRange: [0, 220]}),
+          opacity: breakdownAnim,
+          overflow: 'hidden',
+        }}>
+        <View style={styles.breakdownBox}>
+          <CustomText style={styles.breakdownTitle} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+            {t('bankRiskScoreBreakdown')}
+          </CustomText>
+          {tx.factors.map(factor => (
+            <View key={factor.labelEn} style={[styles.breakdownRow, isRTL && styles.rowRTL]}>
+              <CustomText style={styles.breakdownLabel} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+                {isRTL ? factor.labelAr : factor.labelEn}
+              </CustomText>
+              <View style={styles.breakdownTrack}>
+                <View
+                  style={[styles.breakdownFill, {width: `${factor.widthPct}%`, backgroundColor: factor.color}]}
+                />
+              </View>
+              <CustomText style={styles.breakdownPoints} paddingTop={0}>
+                {`+${factor.points}`}
+              </CustomText>
+            </View>
+          ))}
+        </View>
+      </Animated.View>
+
+      <View style={[styles.riskTxActions, isRTL && styles.rowRTL]}>
+        <TouchableOpacity style={styles.riskClearBtn} activeOpacity={0.8} onPress={onDismiss}>
+          <CustomText style={styles.riskClearText} paddingTop={0} center>
+            {t('bankRiskClearAction')}
+          </CustomText>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.riskEscalateBtn} activeOpacity={0.8} onPress={onDismiss}>
+          <CustomText style={styles.riskEscalateText} paddingTop={0} center>
+            {t('bankRiskEscalateAction')}
+          </CustomText>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
+
 
 // Charts hold at their zero state (flat bars, undrawn lines) until the
 // enclosing ChartCard flips this to true — which it does only after its
@@ -264,24 +444,83 @@ const AnimatedLineSeries = ({s, points, index}) => {
 };
 
 // series: [{label, color, data:[numbers]}], all sharing the same `labels`.
-const LineChart = ({series, labels, height = 160, width}) => {
+// Compact axis-number formatting so six-figure revenue values fit the
+// y gutter: 1,250,000 → 1.3M, 42,800 → 43k.
+const formatAxisValue = v => {
+  if (v >= 1000000) {
+    return `${(v / 1000000).toFixed(v >= 10000000 ? 0 : 1)}M`;
+  }
+  if (v >= 1000) {
+    return `${Math.round(v / 1000)}k`;
+  }
+  return String(Math.round(v));
+};
+
+// Y-axis gutter width; the plot area gives this up from the total width.
+const LINE_CHART_Y_GUTTER = 36;
+// How many x labels to show at most — every point's label on a 12-month
+// series would collide at this width.
+const LINE_CHART_MAX_X_LABELS = 6;
+
+const LineChart = ({series, labels, height = 160, width, xTitle, yTitle}) => {
   const allValues = series.flatMap(s => s.data);
   const max = Math.max(...allValues, 1);
-  const stepX = labels.length > 1 ? width / (labels.length - 1) : width;
+  const plotWidth = Math.max(width - LINE_CHART_Y_GUTTER, 1);
+  const stepX = labels.length > 1 ? plotWidth / (labels.length - 1) : plotWidth;
   const toY = v => height - (v / max) * (height - 8) - 4;
+
+  // Three y ticks (max / half / zero); x labels are sampled evenly so long
+  // series stay readable. Named axis titles (e.g. العدد / التاريخ) say what
+  // the numbers mean — explicit user feedback that bare ticks were unclear.
+  const yTicks = [max, max / 2, 0];
+  const xLabelStep = Math.max(1, Math.ceil(labels.length / LINE_CHART_MAX_X_LABELS));
+  const xLabels = labels.map((label, i) => ({
+    label,
+    show: i % xLabelStep === 0 || i === labels.length - 1,
+  }));
 
   return (
     <View>
-      <Svg width={width} height={height}>
-        {series.map((s, index) => (
-          <AnimatedLineSeries
-            key={s.label}
-            s={s}
-            index={index}
-            points={s.data.map((v, i) => `${i * stepX},${toY(v)}`).join(' ')}
-          />
+      {yTitle ? (
+        <CustomText style={styles.axisTitle} paddingTop={0} lineHeight={13} align="left">
+          {yTitle}
+        </CustomText>
+      ) : null}
+      <View style={styles.lineChartRow}>
+        <View style={[styles.yAxisGutter, {height}]}>
+          {yTicks.map(tick => (
+            <CustomText key={tick} style={styles.axisLabel} paddingTop={0} lineHeight={12}>
+              {formatAxisValue(tick)}
+            </CustomText>
+          ))}
+        </View>
+        <Svg width={plotWidth} height={height}>
+          {series.map((s, index) => (
+            <AnimatedLineSeries
+              key={s.label}
+              s={s}
+              index={index}
+              points={s.data.map((v, i) => `${i * stepX},${toY(v)}`).join(' ')}
+            />
+          ))}
+        </Svg>
+      </View>
+      <View style={styles.xAxisRow}>
+        {xLabels.map((entry, i) => (
+          <View key={`${entry.label}-${i}`} style={styles.xAxisSlot}>
+            {entry.show ? (
+              <CustomText style={styles.axisLabel} paddingTop={0} lineHeight={12} numberOfLines={1} center>
+                {entry.label}
+              </CustomText>
+            ) : null}
+          </View>
         ))}
-      </Svg>
+      </View>
+      {xTitle ? (
+        <CustomText style={styles.axisTitle} paddingTop={2} lineHeight={13} center>
+          {xTitle}
+        </CustomText>
+      ) : null}
       <View style={styles.legendRow}>
         {series.map(s => (
           <View key={s.label} style={styles.legendItem}>
@@ -479,7 +718,26 @@ const BankReportsScreen = () => {
 
   const now = new Date();
   const [section, setSection] = useState('overview');
+  // Origins/Risk interaction state (mock-backed): one expanded accordion at
+  // a time per section; cleared risk cards are session-local only and come
+  // back on reload, matching the prototype.
+  const [expandedCity, setExpandedCity] = useState(null);
+  const [expandedRisk, setExpandedRisk] = useState(null);
+  const [riskFilter, setRiskFilter] = useState('all');
+  const [clearedRiskIds, setClearedRiskIds] = useState([]);
   const [period, setPeriod] = useState(PERIOD.MONTHLY);
+
+  const remainingFlagged = riskMockData.flaggedTransactions.filter(tx => !clearedRiskIds.includes(tx.id));
+  const visibleFlagged = remainingFlagged.filter(tx => {
+    if (riskFilter === 'high') {
+      return tx.riskScore >= 70;
+    }
+    if (riskFilter === 'watchlist') {
+      return tx.watchlist;
+    }
+    return true;
+  });
+  const sortedCities = [...originsMockData.cities].sort((a, b) => b.amount - a.amount);
   const [year, setYear] = useState(now.getFullYear());
   // Stored as a Date at the 1st of the target month, so prev/next just
   // shifts calendar months without manually juggling year rollover.
@@ -596,9 +854,9 @@ const BankReportsScreen = () => {
                   paddingTop={0}>
                   {t(s.labelKey)}
                 </CustomText>
-                {s.key === 'risk' ? (
+                {s.key === 'risk' && remainingFlagged.length > 0 ? (
                   <View style={styles.sectionTabBadge}>
-                    <Text style={styles.sectionTabBadgeText}>{riskMockData.summary.openAlerts}</Text>
+                    <Text style={styles.sectionTabBadgeText}>{remainingFlagged.length}</Text>
                   </View>
                 ) : null}
               </TouchableOpacity>
@@ -607,21 +865,12 @@ const BankReportsScreen = () => {
         </View>
 
         {section === 'overview' ? (
+        // Reference layout: the date navigator is the WIDE pill (chevrons
+        // pushed to its edges, label centered) and the period dropdown hugs
+        // its label beside it.
         <View style={[styles.filterRow, isRTL && styles.filterRowRTL]}>
-          <View style={styles.filterField}>
-            <SelectField
-              style={styles.filterSelect}
-              fieldStyle={styles.pillField}
-              value={periodOptions.find(o => o.value === period)}
-              options={periodOptions}
-              onSelect={opt => setPeriod(opt.value)}
-              getLabel={opt => t(opt.labelKey)}
-              getKey={opt => opt.value}
-            />
-          </View>
-
           {period === PERIOD.YEARLY && (
-            <View style={styles.filterFieldNarrow}>
+            <View style={styles.filterFieldWide}>
               <SelectField
                 style={styles.filterSelect}
                 fieldStyle={styles.pillField}
@@ -637,13 +886,13 @@ const BankReportsScreen = () => {
           {period === PERIOD.MONTHLY && (
             <View style={[styles.stepperRow, isRTL && styles.stepperRowRTL]}>
               <TouchableOpacity onPress={() => shiftMonth(-1)} style={styles.stepperBtn}>
-                <ChevronLeft size={18} color={COLORS.text} />
+                <ChevronLeft size={18} color={COLORS.textMuted} />
               </TouchableOpacity>
-              <CustomText style={styles.stepperLabel} paddingTop={0}>
+              <CustomText style={styles.stepperLabel} paddingTop={0} center>
                 {`${MONTH_NAMES_EN[monthCursor.getMonth()]} ${monthCursor.getFullYear()}`}
               </CustomText>
               <TouchableOpacity onPress={() => shiftMonth(1)} style={styles.stepperBtn}>
-                <ChevronRight size={18} color={COLORS.text} />
+                <ChevronRight size={18} color={COLORS.textMuted} />
               </TouchableOpacity>
             </View>
           )}
@@ -651,96 +900,288 @@ const BankReportsScreen = () => {
           {period === PERIOD.DAILY && (
             <View style={[styles.stepperRow, isRTL && styles.stepperRowRTL]}>
               <TouchableOpacity onPress={() => shiftDay(-1)} style={styles.stepperBtn}>
-                <ChevronLeft size={18} color={COLORS.text} />
+                <ChevronLeft size={18} color={COLORS.textMuted} />
               </TouchableOpacity>
-              <CustomText style={styles.stepperLabel} paddingTop={0}>
+              <CustomText style={styles.stepperLabel} paddingTop={0} center>
                 {dayCursor.toISOString().split('T')[0]}
               </CustomText>
               <TouchableOpacity onPress={() => shiftDay(1)} style={styles.stepperBtn}>
-                <ChevronRight size={18} color={COLORS.text} />
+                <ChevronRight size={18} color={COLORS.textMuted} />
               </TouchableOpacity>
             </View>
           )}
+
+          <View style={styles.filterField}>
+            <SelectField
+              style={styles.filterSelect}
+              fieldStyle={styles.pillField}
+              fieldTextStyle={styles.periodFieldText}
+              value={periodOptions.find(o => o.value === period)}
+              options={periodOptions}
+              onSelect={opt => setPeriod(opt.value)}
+              getLabel={opt => t(opt.labelKey)}
+              getKey={opt => opt.value}
+            />
+          </View>
         </View>
         ) : null}
 
         {section === 'origins' ? (
-          // Stub only — the Origins section has no design yet (handoff says
-          // to ask for it rather than invent a layout here).
-          <View style={styles.stubCard}>
-            <CustomText style={styles.stubText} paddingTop={0} align={isRTL ? 'right' : 'left'}>
-              {t('bankReportsPendingDesign')}
+          // Origins per design_handoff_reports: outgoing transfers mapped by
+          // sending company's city over assets/iraq-map.png, with a
+          // city→companies accordion. Entirely mock-backed for now.
+          <>
+            <CustomText style={styles.sectionEyebrow} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+              {t('bankOriginsEyebrow')}
             </CustomText>
-          </View>
+            <CustomText style={styles.sectionSubtext} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+              {t('bankOriginsSubtext')}
+            </CustomText>
+
+            <View style={styles.mapCard}>
+              <Image source={require('../../assets/iraq-map.png')} style={styles.mapImage} resizeMode="cover" />
+              <Svg style={StyleSheet.absoluteFill} width="100%" height="100%" preserveAspectRatio="none" viewBox="0 0 100 100">
+                <Defs>
+                  <SvgLinearGradient id="mapOverlay" x1="0" y1="0" x2="1" y2="1">
+                    <Stop offset="0" stopColor={COLORS.primaryDark} stopOpacity="0.35" />
+                    <Stop offset="1" stopColor={COLORS.text} stopOpacity="0.15" />
+                  </SvgLinearGradient>
+                </Defs>
+                <Rect x="0" y="0" width="100" height="100" fill="url(#mapOverlay)" />
+              </Svg>
+              {originsMockData.cities.map(city => {
+                // Marker diameter scales with transfer volume, exactly per
+                // the prototype's 16 + min(count, 40) * 0.5 formula; the
+                // outer halo is the design's soft 6px glow ring.
+                const size = 16 + Math.min(city.count, 40) * 0.5;
+                const halo = size + 12;
+                return (
+                  <View
+                    key={city.id}
+                    pointerEvents="none"
+                    style={[styles.mapMarker, {left: `${city.left}%`, top: `${city.top}%`}]}>
+                    <View
+                      style={{
+                        width: halo,
+                        height: halo,
+                        borderRadius: halo / 2,
+                        marginLeft: -halo / 2,
+                        marginTop: -halo / 2,
+                        backgroundColor: `${city.color}33`,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>
+                      <View
+                        style={{
+                          width: size,
+                          height: size,
+                          borderRadius: size / 2,
+                          backgroundColor: city.color,
+                          borderWidth: 2,
+                          borderColor: 'rgba(255,255,255,0.85)',
+                        }}
+                      />
+                    </View>
+                  </View>
+                );
+              })}
+              {/* Always pinned bottom-LEFT regardless of language direction —
+                  the RTL mirror put it over the Basra/Nasiriyah markers
+                  (explicit user feedback); bottom-left is open map space. */}
+              <View style={styles.mapCaption}>
+                <CustomText style={styles.mapCaptionText} paddingTop={0}>
+                  {t('bankOriginsMapCaption')}
+                </CustomText>
+              </View>
+            </View>
+
+            <View style={[styles.originStatsRow, isRTL && styles.rowRTL]}>
+              <View style={styles.originStatCard}>
+                <CustomText style={styles.originStatValue} paddingTop={0} lineHeight={22} align={isRTL ? 'right' : 'left'}>
+                  {originsMockData.cities.length}
+                </CustomText>
+                <CustomText style={styles.originStatLabel} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+                  {t('bankOriginsSenderCities')}
+                </CustomText>
+              </View>
+              <View style={styles.originStatCard}>
+                <CustomText style={styles.originStatValue} paddingTop={0} lineHeight={22} align={isRTL ? 'right' : 'left'}>
+                  {originsMockData.stats.newSenders}
+                </CustomText>
+                <CustomText style={styles.originStatLabel} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+                  {t('bankOriginsNewSenders')}
+                </CustomText>
+              </View>
+              <View style={styles.originStatCard}>
+                <CustomText
+                  style={[styles.originStatValue, {color: '#B5347A'}]}
+                  paddingTop={0}
+                  lineHeight={22}
+                  align={isRTL ? 'right' : 'left'}>
+                  {originsMockData.stats.flagged}
+                </CustomText>
+                <CustomText style={styles.originStatLabel} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+                  {t('bankOriginsFlaggedSender')}
+                </CustomText>
+              </View>
+            </View>
+
+            <CustomText style={styles.riskCardTitle} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+              {t('bankOriginsTopCities')}
+            </CustomText>
+            <View style={styles.originCityList}>
+              {sortedCities.map(city => (
+                <OriginCityRow
+                  key={city.id}
+                  city={city}
+                  isRTL={isRTL}
+                  expanded={expandedCity === city.id}
+                  onToggle={() => setExpandedCity(prev => (prev === city.id ? null : city.id))}
+                />
+              ))}
+            </View>
+          </>
         ) : null}
 
         {section === 'risk' ? (
-          // Minimal placeholder rendering of riskMockData.json (no real
-          // AML/risk endpoint exists yet) — intentionally plain, pending the
-          // section's actual design.
+          // Risk per design_handoff_reports: AML/compliance screening
+          // dashboard. Entirely mock-backed (riskMockData.json) until the
+          // backend risk-screening endpoint exists.
           <>
+            <CustomText style={styles.sectionEyebrow} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+              {t('bankRiskEyebrow')}
+            </CustomText>
+            <CustomText style={styles.sectionSubtext} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+              {t('bankRiskSubtext')}
+            </CustomText>
+
+            <View style={[styles.riskSummaryGrid, isRTL && styles.rowRTLWrap]}>
+              <View style={[styles.riskSummaryCard, styles.riskSummaryCardHero]}>
+                {/* The Svg lives inside a plain absoluteFill View: RNSVG's
+                    percentage width/height can't resolve against a parent
+                    whose height comes from its content (this card), which
+                    left the gradient covering only part of the card. The
+                    wrapper View gets definite bounds from absoluteFill, so
+                    the Svg's 100% resolves against those. */}
+                <View style={StyleSheet.absoluteFill}>
+                  <Svg width="100%" height="100%" preserveAspectRatio="none" viewBox="0 0 100 100">
+                    <Defs>
+                      <SvgLinearGradient id="riskHeroGradient" x1="0" y1="0" x2="1" y2="1">
+                        <Stop offset="0" stopColor={COLORS.primaryDark} />
+                        <Stop offset="1" stopColor={COLORS.primary} />
+                      </SvgLinearGradient>
+                    </Defs>
+                    <Rect x="0" y="0" width="100" height="100" fill="url(#riskHeroGradient)" />
+                  </Svg>
+                </View>
+                <View>
+                  <CustomText style={styles.riskSummaryHeroValue} paddingTop={0} lineHeight={28} align={isRTL ? 'right' : 'left'}>
+                    {remainingFlagged.length}
+                  </CustomText>
+                  <CustomText style={styles.riskSummaryHeroLabel} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+                    {t('bankRiskOpenAlerts')}
+                  </CustomText>
+                </View>
+              </View>
+              <View style={styles.riskSummaryCard}>
+                <CustomText style={styles.riskSummaryValue} paddingTop={0} lineHeight={28} align={isRTL ? 'right' : 'left'}>
+                  {riskMockData.summary.avgRiskScore}
+                </CustomText>
+                <CustomText style={styles.riskSummaryLabel} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+                  {t('bankRiskAvgScore100')}
+                </CustomText>
+              </View>
+              <View style={styles.riskSummaryCard}>
+                <CustomText
+                  style={[styles.riskSummaryValue, {color: COLORS.danger}]}
+                  paddingTop={0}
+                  lineHeight={28}
+                  align={isRTL ? 'right' : 'left'}>
+                  {riskMockData.summary.watchlistMatches}
+                </CustomText>
+                <CustomText style={styles.riskSummaryLabel} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+                  {t('bankRiskWatchlist')}
+                </CustomText>
+              </View>
+              <View style={styles.riskSummaryCard}>
+                <CustomText style={styles.riskSummaryValue} paddingTop={0} lineHeight={28} align={isRTL ? 'right' : 'left'}>
+                  {riskMockData.summary.sanctionedCorridors}
+                </CustomText>
+                <CustomText style={styles.riskSummaryLabel} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+                  {t('bankRiskSanctioned')}
+                </CustomText>
+              </View>
+            </View>
+
+            <CustomText style={styles.riskCardTitle} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+              {t('bankRiskDistribution')}
+            </CustomText>
+            <View style={[styles.riskDistBar, isRTL && styles.rowRTL]}>
+              {riskMockData.riskDistribution.map(bucket => (
+                <View key={bucket.labelEn} style={{flexGrow: bucket.percent, backgroundColor: bucket.color}} />
+              ))}
+            </View>
+            <View style={[styles.riskDistLegend, isRTL && styles.rowRTLWrap]}>
+              {riskMockData.riskDistribution.map(bucket => (
+                <View key={bucket.labelEn} style={[styles.riskDistLegendItem, isRTL && styles.rowRTL]}>
+                  <View style={[styles.riskDistDot, {backgroundColor: bucket.color}]} />
+                  <CustomText style={styles.riskDistLegendText} paddingTop={0}>
+                    {`${isRTL ? bucket.labelAr : bucket.labelEn} ${bucket.count}`}
+                  </CustomText>
+                </View>
+              ))}
+            </View>
+
+            <View style={[styles.riskFlaggedHeader, isRTL && styles.rowRTL]}>
+              <CustomText style={styles.riskCardTitle} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+                {t('bankRiskFlagged')}
+              </CustomText>
+              <View style={[styles.riskFilterRow, isRTL && styles.rowRTL]}>
+                {[
+                  {key: 'all', labelKey: 'bankHomeFilterAll'},
+                  {key: 'high', labelKey: 'bankRiskHighScoreFilter'},
+                  {key: 'watchlist', labelKey: 'bankRiskWatchlistFilter'},
+                ].map(f => {
+                  const active = riskFilter === f.key;
+                  return (
+                    <TouchableOpacity
+                      key={f.key}
+                      activeOpacity={0.8}
+                      onPress={() => setRiskFilter(f.key)}
+                      style={[styles.riskFilterChip, active && styles.riskFilterChipActive]}>
+                      <CustomText
+                        style={[styles.riskFilterChipText, active && styles.riskFilterChipTextActive]}
+                        paddingTop={0}>
+                        {t(f.labelKey)}
+                      </CustomText>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={styles.riskTxList}>
+              {visibleFlagged.map(tx => (
+                <RiskFlaggedCard
+                  key={tx.id}
+                  tx={tx}
+                  isRTL={isRTL}
+                  expanded={expandedRisk === tx.id}
+                  onToggleBreakdown={() => setExpandedRisk(prev => (prev === tx.id ? null : tx.id))}
+                  onDismiss={() => setClearedRiskIds(prev => [...prev, tx.id])}
+                />
+              ))}
+              {visibleFlagged.length === 0 ? (
+                <CustomText style={styles.riskEmptyText} paddingTop={0} center>
+                  {t('bankRiskNoFlagged')}
+                </CustomText>
+              ) : null}
+            </View>
+
             <View style={styles.stubCard}>
               <CustomText style={styles.stubText} paddingTop={0} align={isRTL ? 'right' : 'left'}>
                 {t('bankRiskMockNote')}
               </CustomText>
-            </View>
-
-            <View style={styles.statsGrid}>
-              <StatCard label={t('bankRiskOpenAlerts')} value={riskMockData.summary.openAlerts} color={COLORS.danger} />
-              <StatCard label={t('bankRiskAvgScore')} value={riskMockData.summary.avgRiskScore} color={COLORS.pending} />
-              <StatCard label={t('bankRiskWatchlist')} value={riskMockData.summary.watchlistMatches} color={COLORS.primary} />
-              <StatCard
-                label={t('bankRiskSanctioned')}
-                value={riskMockData.summary.sanctionedCorridors}
-                color={CATEGORY_COLORS.bawales}
-              />
-            </View>
-
-            <View style={styles.chartCard}>
-              <CustomText style={styles.riskCardTitle} paddingTop={0} align={isRTL ? 'right' : 'left'}>
-                {t('bankRiskDistribution')}
-              </CustomText>
-              <View style={styles.riskDistList}>
-                {riskMockData.riskDistribution.map(bucket => (
-                  <View key={bucket.labelEn} style={[styles.riskDistRow, isRTL && styles.rowRTL]}>
-                    <View style={[styles.riskDistDotLabel, isRTL && styles.rowRTL]}>
-                      <View style={[styles.riskDistDot, {backgroundColor: bucket.color}]} />
-                      <CustomText style={styles.riskDistLabel} paddingTop={0}>
-                        {isRTL ? bucket.labelAr : bucket.labelEn}
-                      </CustomText>
-                    </View>
-                    <CustomText style={styles.riskDistValue} paddingTop={0}>
-                      {`${bucket.count} (${bucket.percent}%)`}
-                    </CustomText>
-                  </View>
-                ))}
-              </View>
-            </View>
-
-            <View style={styles.chartCard}>
-              <CustomText style={styles.riskCardTitle} paddingTop={0} align={isRTL ? 'right' : 'left'}>
-                {t('bankRiskFlagged')}
-              </CustomText>
-              <View style={styles.riskDistList}>
-                {riskMockData.flaggedTransactions.map(tx => (
-                  <View key={tx.id} style={styles.riskTxRow}>
-                    <View style={[styles.riskTxTopRow, isRTL && styles.rowRTL]}>
-                      <CustomText style={styles.riskTxSender} paddingTop={0}>
-                        {isRTL ? tx.senderAr : tx.senderEn}
-                      </CustomText>
-                      <CustomText style={styles.riskTxScore} paddingTop={0}>
-                        {`${t('bankRiskScoreLabel')}: ${tx.riskScore}`}
-                      </CustomText>
-                    </View>
-                    <CustomText style={styles.riskTxMeta} paddingTop={0} align={isRTL ? 'right' : 'left'}>
-                      {`${isRTL ? tx.corridorAr : tx.corridorEn} — ${tx.amount.toLocaleString()} ${tx.currency}`}
-                    </CustomText>
-                    <CustomText style={styles.riskTxReasons} paddingTop={0} align={isRTL ? 'right' : 'left'}>
-                      {(isRTL ? tx.reasonsAr : tx.reasonsEn).join(' • ')}
-                    </CustomText>
-                  </View>
-                ))}
-              </View>
             </View>
           </>
         ) : null}
@@ -758,7 +1199,7 @@ const BankReportsScreen = () => {
               <StatCard label={t('rejectedTransfers')} value={summary.rejectedTransfers} color={CATEGORY_COLORS.rejected} />
               <StatCard label={t('pending')} value={summary.pendingTransfers} color={CATEGORY_COLORS.pending} />
               <StatCard label={t('notStarted')} value={summary.notStartedTransfers} color={CATEGORY_COLORS.notStarted} />
-              <StatCard label={t('bawales')} value={summary.bawalesTotal} color={CATEGORY_COLORS.bawales} />
+              <StatCard label={t('bawales')} value={summary.bawalesTotal} color={CATEGORY_COLORS.bawales} wide />
             </RevealCard>
 
             <RevealCard controller={revealController}>
@@ -775,13 +1216,25 @@ const BankReportsScreen = () => {
 
             <RevealCard controller={revealController}>
               <ChartCard title={t('transferAnalytics')} isEmpty={!hasData} emptyLabel={t('noDataForPeriod')} isRTL={isRTL} onExpanded={scrollCardIntoView}>
-                <LineChart series={overviewLineSeries} labels={overviewLine.labels} width={chartWidth} />
+                <LineChart
+                  series={overviewLineSeries}
+                  labels={overviewLine.labels}
+                  width={chartWidth}
+                  yTitle={t('chartCountAxis')}
+                  xTitle={t('date')}
+                />
               </ChartCard>
             </RevealCard>
 
             <RevealCard controller={revealController}>
               <ChartCard title={t('revenueMetrics')} isEmpty={!hasData} emptyLabel={t('noDataForPeriod')} isRTL={isRTL} onExpanded={scrollCardIntoView}>
-                <LineChart series={profitSeries} labels={profitLine.labels} width={chartWidth} />
+                <LineChart
+                  series={profitSeries}
+                  labels={profitLine.labels}
+                  width={chartWidth}
+                  yTitle={t('amount')}
+                  xTitle={t('date')}
+                />
               </ChartCard>
             </RevealCard>
           </>
@@ -799,10 +1252,12 @@ const styles = StyleSheet.create({
   // Segmented Overview/Origins/Risk sub-nav per design_handoff_reports_tab:
   // one white pill card, active tab a solid dark-purple pill, Risk carrying
   // a red open-alerts count badge.
+  // Rounded rectangles (12/9), not full pills — matches the reference
+  // screenshot's corner treatment for the sub-nav and period row.
   sectionTabs: {
     flexDirection: 'row',
     backgroundColor: COLORS.surface,
-    borderRadius: 999,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
     padding: 4,
@@ -817,7 +1272,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 5,
     paddingVertical: 8,
-    borderRadius: 999,
+    borderRadius: 9,
   },
   sectionTabRTL: {flexDirection: 'row-reverse'},
   sectionTabActive: {backgroundColor: COLORS.primaryDark},
@@ -846,37 +1301,209 @@ const styles = StyleSheet.create({
   stubText: {fontSize: 13, color: COLORS.textMuted, fontWeight: '600'},
 
   riskCardTitle: {fontSize: 13, fontWeight: '700', color: COLORS.text, textTransform: 'uppercase', letterSpacing: 0.5},
-  riskDistList: {marginTop: 12, gap: 10},
   rowRTL: {flexDirection: 'row-reverse'},
-  riskDistRow: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
-  riskDistDotLabel: {flexDirection: 'row', alignItems: 'center', gap: 8},
-  riskDistDot: {width: 10, height: 10, borderRadius: 5},
-  riskDistLabel: {fontSize: 13, color: COLORS.text, fontWeight: '600'},
-  riskDistValue: {fontSize: 13, color: COLORS.textMuted, fontWeight: '700'},
-  riskTxRow: {borderTopWidth: 1, borderTopColor: COLORS.surfaceAlt, paddingTop: 10, gap: 3},
-  riskTxTopRow: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
-  riskTxSender: {fontSize: 13.5, fontWeight: '700', color: COLORS.text},
-  riskTxScore: {fontSize: 12, fontWeight: '700', color: COLORS.danger},
-  riskTxMeta: {fontSize: 12, color: COLORS.textMuted, fontWeight: '600'},
-  riskTxReasons: {fontSize: 11.5, color: COLORS.textMuted},
+  rowRTLWrap: {flexDirection: 'row-reverse', flexWrap: 'wrap'},
 
-  filterRow: {flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap'},
+  sectionEyebrow: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    color: '#a06fd9',
+  },
+  sectionSubtext: {fontSize: 12.5, color: COLORS.textMuted, marginTop: 3, marginBottom: 14},
+
+  mapCard: {
+    borderRadius: 18,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.text,
+    ...makeShadow({y: 14, blur: 34, color: COLORS.primaryDark, opacity: 0.35}),
+  },
+  mapImage: {width: '100%', height: 220, opacity: 0.88},
+  mapMarker: {position: 'absolute'},
+  mapCaption: {
+    position: 'absolute',
+    left: 12,
+    bottom: 10,
+    backgroundColor: 'rgba(26,15,38,0.55)',
+    borderRadius: 8,
+    paddingVertical: 5,
+    paddingHorizontal: 9,
+  },
+  mapCaptionText: {fontSize: 10.5, color: '#e8d9f5', fontWeight: '600'},
+
+  originStatsRow: {flexDirection: 'row', gap: 8, marginTop: 14, marginBottom: 16},
+  originStatCard: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  originStatValue: {fontSize: 16, fontWeight: '800', color: COLORS.text},
+  originStatLabel: {fontSize: 10, color: COLORS.textMuted, fontWeight: '600', marginTop: 1},
+
+  originCityList: {gap: 8, marginTop: 8, marginBottom: 4},
+  originCityRow: {
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    paddingVertical: 11,
+    paddingHorizontal: 13,
+  },
+  originCityTop: {flexDirection: 'row', alignItems: 'center', gap: 12},
+  originCityDot: {width: 8, height: 8, borderRadius: 4},
+  originCityInfo: {flex: 1, minWidth: 0},
+  originCityName: {fontSize: 13.5, fontWeight: '700', color: COLORS.text},
+  originCityCount: {fontSize: 11, color: COLORS.textMuted, marginTop: 1},
+  originCityAmount: {alignItems: 'flex-end'},
+  originCityAmountRTL: {alignItems: 'flex-start'},
+  originCityAmountText: {fontSize: 13.5, fontWeight: '700', color: COLORS.text},
+  originCityTrend: {fontSize: 10.5, fontWeight: '700'},
+  originCompanyList: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.surfaceAlt,
+    gap: 8,
+  },
+  originCompanyRow: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10},
+  originCompanyName: {flex: 1, fontSize: 12, color: COLORS.text, fontWeight: '600'},
+  originCompanyMeta: {fontSize: 12, color: COLORS.textMuted},
+
+  riskSummaryGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16},
+  riskSummaryCard: {
+    flexBasis: '47%',
+    flexGrow: 1,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 14,
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+    overflow: 'hidden',
+  },
+  riskSummaryCardHero: {borderWidth: 0},
+  riskSummaryHeroValue: {fontSize: 22, fontWeight: '800', color: '#fff'},
+  riskSummaryHeroLabel: {fontSize: 10.5, color: 'rgba(255,255,255,0.75)', fontWeight: '600', marginTop: 2},
+  riskSummaryValue: {fontSize: 22, fontWeight: '800', color: COLORS.text},
+  riskSummaryLabel: {fontSize: 10.5, color: COLORS.textMuted, fontWeight: '600', marginTop: 2},
+
+  riskDistBar: {
+    flexDirection: 'row',
+    height: 14,
+    borderRadius: 7,
+    overflow: 'hidden',
+    marginTop: 8,
+    marginBottom: 6,
+  },
+  riskDistLegend: {flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 20},
+  riskDistLegendItem: {flexDirection: 'row', alignItems: 'center', gap: 5},
+  riskDistDot: {width: 7, height: 7, borderRadius: 4},
+  riskDistLegendText: {fontSize: 11, color: COLORS.textMuted, fontWeight: '600'},
+
+  riskFlaggedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    gap: 8,
+  },
+  riskFilterRow: {flexDirection: 'row', gap: 6},
+  riskFilterChip: {
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#f1e9f6',
+  },
+  riskFilterChipActive: {backgroundColor: COLORS.primaryDark},
+  riskFilterChipText: {fontSize: 11, fontWeight: '700', color: COLORS.primaryDark},
+  riskFilterChipTextActive: {color: '#fff'},
+
+  riskTxList: {gap: 10, marginBottom: 14},
+  riskTxCard: {
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 14,
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+  },
+  riskTxCardCritical: {borderColor: '#f0c9de'},
+  riskTxHeader: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10},
+  riskTxInfo: {flex: 1, minWidth: 0},
+  riskTxSender: {fontSize: 13.5, fontWeight: '700', color: COLORS.text},
+  riskTxMeta: {fontSize: 11, color: COLORS.textMuted, marginTop: 1},
+  scoreRing: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scoreRingText: {fontSize: 12, fontWeight: '800'},
+  reasonTagsRow: {flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10},
+  reasonTag: {
+    backgroundColor: '#fdeaea',
+    borderRadius: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  reasonTagText: {fontSize: 10.5, fontWeight: '700', color: '#B5347A'},
+  breakdownBox: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.surfaceAlt,
+    gap: 6,
+  },
+  breakdownTitle: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: 2,
+  },
+  breakdownRow: {flexDirection: 'row', alignItems: 'center', gap: 8},
+  breakdownLabel: {flex: 1, fontSize: 11.5, color: COLORS.text},
+  breakdownTrack: {width: 60, height: 6, borderRadius: 3, backgroundColor: COLORS.surfaceAlt, overflow: 'hidden'},
+  breakdownFill: {height: '100%'},
+  breakdownPoints: {width: 26, fontSize: 11, fontWeight: '700', color: COLORS.text, textAlign: 'right'},
+  riskTxActions: {flexDirection: 'row', gap: 8, marginTop: 12},
+  riskClearBtn: {flex: 1, paddingVertical: 9, borderRadius: 9, backgroundColor: '#f1e9f6'},
+  riskClearText: {fontSize: 12, fontWeight: '700', color: COLORS.primary},
+  riskEscalateBtn: {flex: 1, paddingVertical: 9, borderRadius: 9, backgroundColor: COLORS.primaryDark},
+  riskEscalateText: {fontSize: 12, fontWeight: '700', color: '#fff'},
+  riskEmptyText: {fontSize: 13, color: COLORS.textMuted, paddingVertical: 30},
+
+  filterRow: {flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16},
   filterRowRTL: {flexDirection: 'row-reverse'},
-  // Pill treatment for the period dropdown + date stepper per the handoff
-  // screenshot (fully rounded white cards with the standard border).
-  pillField: {borderRadius: 999},
-  filterField: {minWidth: 130},
-  filterFieldNarrow: {minWidth: 100},
+  filterFieldWide: {flex: 1},
+  // Period dropdown + date stepper per the reference: 12px rounded-rect
+  // white cards with the standard border, and the selected period label
+  // rendered in the primary purple.
+  pillField: {borderRadius: 12},
+  periodFieldText: {color: COLORS.primary, fontWeight: '700'},
+  filterField: {minWidth: 110},
   // SelectField carries its own form-layout bottom margin; inside this
   // center-aligned filter row that margin shoves the closed field up
   // relative to the stepper, so zero it out here.
   filterSelect: {marginBottom: 0},
   stepperRow: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 8,
     backgroundColor: COLORS.surface,
-    borderRadius: 999,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
     paddingHorizontal: 8,
@@ -886,18 +1513,24 @@ const styles = StyleSheet.create({
   },
   stepperRowRTL: {flexDirection: 'row-reverse'},
   stepperBtn: {padding: 4},
-  stepperLabel: {fontSize: 13, fontWeight: '700', color: COLORS.text, minWidth: 100, textAlign: 'center'},
+  stepperLabel: {flex: 1, fontSize: 13, fontWeight: '700', color: COLORS.text, textAlign: 'center'},
 
   statsGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16},
+  // 2-column grid per design_handoff_reports (was 3-up); the Balances card
+  // stretches full width below via statCardWide.
   statCard: {
-    flexBasis: '31%',
+    flexBasis: '47%',
     flexGrow: 1,
     backgroundColor: COLORS.surface,
     borderRadius: 12,
-    borderTopWidth: 3,
-    padding: 12,
+    overflow: 'hidden',
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 9,
     ...CARD_SHADOW,
   },
+  statCardAccent: {position: 'absolute', top: 0, left: 0, right: 0, height: 3},
+  statCardWide: {flexBasis: '100%'},
   statValue: {fontSize: 20, fontWeight: '800', color: COLORS.text},
   statLabel: {fontSize: 11, color: COLORS.textMuted, fontWeight: '600'},
 
@@ -925,6 +1558,12 @@ const styles = StyleSheet.create({
   bar: {width: '70%', borderRadius: 6, minHeight: 4},
   barLabel: {fontSize: 9, color: COLORS.textMuted, textAlign: 'center'},
 
+  lineChartRow: {flexDirection: 'row', alignItems: 'flex-start'},
+  yAxisGutter: {width: LINE_CHART_Y_GUTTER, justifyContent: 'space-between', paddingRight: 6, paddingVertical: 0},
+  axisLabel: {fontSize: 9, color: COLORS.textMuted, fontWeight: '600'},
+  axisTitle: {fontSize: 10, color: COLORS.textMuted, fontWeight: '700', marginBottom: 4},
+  xAxisRow: {flexDirection: 'row', marginTop: 4, marginLeft: LINE_CHART_Y_GUTTER},
+  xAxisSlot: {flex: 1},
   legendRow: {flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 10},
   legendItem: {flexDirection: 'row', alignItems: 'center', gap: 5},
   legendDot: {width: 8, height: 8, borderRadius: 4},

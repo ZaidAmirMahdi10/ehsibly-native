@@ -1,0 +1,27 @@
+diff --git a/node_modules/react-native-config/android/src/main/java/com/lugg/RNCConfig/RNCConfigPackage.java b/node_modules/react-native-config/android/src/main/java/com/lugg/RNCConfig/RNCConfigPackage.java
+index 9ddb65f..d592052 100644
+--- a/node_modules/react-native-config/android/src/main/java/com/lugg/RNCConfig/RNCConfigPackage.java
++++ b/node_modules/react-native-config/android/src/main/java/com/lugg/RNCConfig/RNCConfigPackage.java
+@@ -2,6 +2,7 @@ package com.lugg.RNCConfig;
+ 
+ import androidx.annotation.NonNull;
+ import com.facebook.react.BaseReactPackage;
++import com.facebook.react.ReactPackage;
+ import com.facebook.react.bridge.NativeModule;
+ import com.facebook.react.bridge.ReactApplicationContext;
+ import com.facebook.react.module.model.ReactModuleInfo;
+@@ -9,7 +10,13 @@ import com.facebook.react.module.model.ReactModuleInfoProvider;
+ import java.util.HashMap;
+ import java.util.Map;
+ 
+-public class RNCConfigPackage extends BaseReactPackage {
++// `implements ReactPackage` is redundant (BaseReactPackage already implements it) but required
++// for React Native's autolinking CLI to detect this as a valid Android package: its detection
++// regex only matches "implements ReactPackage" or "extends TurboReactPackage" in the class
++// declaration, and doesn't recognize "extends BaseReactPackage". Without this, the whole Android
++// platform config for this dependency resolves to null — silently dropping both the Gradle/Java
++// package registration AND the native C++ TurboModule codegen aggregation (autolinking.cpp).
++public class RNCConfigPackage extends BaseReactPackage implements ReactPackage {
+ 
+   @Override
+   public NativeModule getModule(String name, @NonNull ReactApplicationContext reactContext) {

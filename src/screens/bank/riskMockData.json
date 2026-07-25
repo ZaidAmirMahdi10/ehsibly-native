@@ -1,5 +1,5 @@
 {
-  "_comment": "Placeholder/mock data for the AML & Risk tab — no real backend endpoint exists yet. Wire real data when available; this file exists so the UI has something to render meanwhile.",
+  "_comment": "Placeholder/mock data for the AML & Risk tab — no real backend endpoint exists yet. Wire real data when available; this file exists so the UI has something to render meanwhile. Factor widthPct is the breakdown bar's fill percentage from the design prototype.",
   "summary": {
     "openAlerts": 3,
     "avgRiskScore": 71,
@@ -22,8 +22,14 @@
       "amount": 42800,
       "currency": "USD",
       "riskScore": 88,
+      "watchlist": false,
       "reasonsAr": ["مسار ضمن القائمة الخاضعة للعقوبات", "مبلغ أقل بقليل من الحد المقرر"],
-      "reasonsEn": ["Sanctioned-list corridor", "Amount just under threshold"]
+      "reasonsEn": ["Sanctioned-list corridor", "Amount just under threshold"],
+      "factors": [
+        { "labelEn": "Corridor risk", "labelAr": "مخاطر المسار", "points": 40, "widthPct": 100, "color": "#B5347A" },
+        { "labelEn": "Amount pattern", "labelAr": "نمط المبلغ", "points": 28, "widthPct": 70, "color": "#E76F51" },
+        { "labelEn": "Sender history", "labelAr": "سجل المرسل", "points": 20, "widthPct": 50, "color": "#E8B331" }
+      ]
     },
     {
       "id": "risk-002",
@@ -34,8 +40,13 @@
       "amount": 15600,
       "currency": "USD",
       "riskScore": 71,
+      "watchlist": true,
       "reasonsAr": ["تطابق اسم مع قائمة المراقبة"],
-      "reasonsEn": ["Watchlist name match"]
+      "reasonsEn": ["Watchlist name match"],
+      "factors": [
+        { "labelEn": "Watchlist match", "labelAr": "تطابق قائمة المراقبة", "points": 55, "widthPct": 100, "color": "#B5347A" },
+        { "labelEn": "Sender history", "labelAr": "سجل المرسل", "points": 16, "widthPct": 40, "color": "#E8B331" }
+      ]
     },
     {
       "id": "risk-003",
@@ -46,8 +57,13 @@
       "amount": 9200,
       "currency": "USD",
       "riskScore": 54,
+      "watchlist": false,
       "reasonsAr": ["نمط تجزئة للمبالغ", "مستفيد جديد"],
-      "reasonsEn": ["Structuring pattern", "New beneficiary"]
+      "reasonsEn": ["Structuring pattern", "New beneficiary"],
+      "factors": [
+        { "labelEn": "Structuring pattern", "labelAr": "نمط تجزئة", "points": 30, "widthPct": 80, "color": "#E76F51" },
+        { "labelEn": "New beneficiary", "labelAr": "مستفيد جديد", "points": 24, "widthPct": 60, "color": "#E8B331" }
+      ]
     }
   ]
 }
