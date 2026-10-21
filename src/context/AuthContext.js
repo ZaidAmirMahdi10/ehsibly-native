@@ -2,6 +2,7 @@ import {createContext, useContext, useEffect, useState, useCallback} from 'react
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as authService from '../services/auth';
 import {setApiSession, clearApiSession, registerUnauthorizedHandler} from '../services/apiClient';
+import {registerForPush, unregisterPush} from '../services/pushNotifications';
 
 const SESSION_KEY = 'ehsibly_session';
 
@@ -74,6 +75,7 @@ export const AuthProvider = ({children}) => {
   const [isLoading, setIsLoading] = useState(true);
 
   const logout = useCallback(async () => {
+    await unregisterPush();
     await AsyncStorage.removeItem(SESSION_KEY);
     clearApiSession();
     setSession(null);
@@ -91,6 +93,7 @@ export const AuthProvider = ({children}) => {
           const parsed = JSON.parse(stored);
           setApiSession(parsed);
           setSession(parsed);
+          registerForPush();
         }
       } catch (error) {
         console.error('Failed to restore session', error);
@@ -112,6 +115,7 @@ export const AuthProvider = ({children}) => {
     await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(normalized));
     setApiSession(normalized);
     setSession(normalized);
+    registerForPush();
     return normalized;
   }, []);
 

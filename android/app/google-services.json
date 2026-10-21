@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "34005866369",
+    "project_id": "ehsibly-aab56",
+    "storage_bucket": "ehsibly-aab56.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:34005866369:android:15e786f217cc67c115ba80",
+        "android_client_info": {
+          "package_name": "com.ehsibly.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB6Dweilp6JuXP7SBPZc110Xi9Lo_TG6r0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
