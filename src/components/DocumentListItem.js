@@ -44,7 +44,7 @@ const DOC_ICONS = {
   MansurBankForeignCurrencyTradingWindowRequest: '💱',
 };
 
-const DocumentListItem = ({type, isRTL, onView, onDelete}) => {
+const DocumentListItem = ({type, label, isRTL, onView, onDelete}) => {
   const {t} = useTranslation();
   const labelKey = DOC_LABEL_KEYS[type];
 
@@ -56,7 +56,7 @@ const DocumentListItem = ({type, isRTL, onView, onDelete}) => {
         </CustomText>
       </View>
       <CustomText bold style={styles.label} numberOfLines={1}>
-        {labelKey ? t(labelKey) : type}
+        {label || (labelKey ? t(labelKey) : type)}
       </CustomText>
       <TouchableOpacity style={styles.viewBtn} onPress={onView} activeOpacity={0.7}>
         <CustomText style={styles.viewBtnText} paddingTop={0}>

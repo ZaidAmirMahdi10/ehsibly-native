@@ -35,3 +35,10 @@ export const updatePaymentDocuments = async (paymentId, invoiceId, formData) => 
   );
   return response.data;
 };
+
+// GET /multiCInvoicePaymentDetails/getAll/:invoiceId — every payment of an
+// invoice (the web's payments table); getPaymentDetail adds each one's docs.
+export const getInvoicePayments = async invoiceId => {
+  const response = await apiClient.get(`/multiCInvoicePaymentDetails/getAll/${invoiceId}`);
+  return response.data?.invoicePayments || [];
+};

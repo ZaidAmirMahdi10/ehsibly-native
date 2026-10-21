@@ -30,16 +30,16 @@ export const NON_INVOICE_DOC_SOURCES = [
 // PUT multiCInvoicePaymentDetails/:id (multer .fields(), hard-restricted to
 // exactly these 9 names). Which subset is relevant depends on the invoice's
 // applicationBank, mirroring the web app's UploadApplicationsDocumentsModal.
-export const BAGHDAD_PAYMENT_DOC_TYPES = [
-  'BaghdadTransactionRequest',
-  'BaghdadEntryRequest',
-  'BaghdadPromise',
-  'BaghdadConfirmation',
-  'BaghdadPaymentDetails',
-];
+// Web (UploadApplicationsDocumentsModal.jsx, "Baghdad now only downloads the
+// bank form"): Baghdad's upload slot list is just the signed financial
+// transfer request form. The entry request / declaration & undertaking /
+// confirmation / bank pledge slots were removed there, so they're not offered
+// here either. Docs of those types that already exist on a payment are still
+// listed (and preserved on upload) — see InvoiceDetailScreen.
+export const BAGHDAD_PAYMENT_DOC_TYPES = ['BaghdadTransactionRequest'];
 
+// Web's MansurBankFiles offers these three slots only (no BankPledge).
 export const MANSUR_PAYMENT_DOC_TYPES = [
-  'BankPledge',
   'MansurTransactionRequest',
   'MansurBankPromise',
   'MansurBankForeignCurrencyTradingWindowRequest',

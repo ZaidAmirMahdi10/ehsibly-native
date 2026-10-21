@@ -18,3 +18,17 @@ export const generatePermit = async payload => {
   const response = await apiClient.post('/generatePermit', payload);
   return response;
 };
+
+// Download-only variant (web ViewInvoice.js handleGenerateFiles): re-renders the
+// bank's form package (transaction request / entry request / promise, or the
+// Baghdad request + payment-details sheet) for an EXISTING payment without
+// creating or changing any record, so a binary response is safe here —
+// unlike the creating call above, nothing depends on the request "completing".
+export const downloadPermitFiles = async payload => {
+  const response = await apiClient.post(
+    '/generatePermit',
+    {...payload, isApplicationBank: true, isNew: false, downloadOnly: true},
+    {responseType: 'arraybuffer'},
+  );
+  return response.data;
+};

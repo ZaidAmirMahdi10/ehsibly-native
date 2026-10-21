@@ -14,6 +14,9 @@ import StripedCard from '../../components/StripedCard';
 import SelectField from '../../components/SelectField';
 import {getCompanyBankAccounts, getSupplierBankAccounts} from '../../services/bankAccounts';
 import {generatePermit} from '../../services/generatePermit';
+import {getMultiContainerInvoices, getInvoiceById} from '../../services/invoices/multiContainerWithoutC';
+import {getPaymentDetail} from '../../services/paymentDetails';
+import {downloadApplicationFiles} from '../../utils/applicationFiles';
 import {useAuth} from '../../context/AuthContext';
 import {COLORS} from '../../constants/theme';
 
@@ -187,6 +190,33 @@ const GenerateApplicationScreen = () => {
         refrenceNumber: referenceNumber.trim() || undefined,
         paymentDate: new Date().toISOString(),
       });
+      // Web downloads the form package the moment the application is made.
+      // The creating call can't return the ZIP reliably in React Native (see
+      // generatePermit.js), so fetch it with a second, download-only call.
+      // Failure here is non-fatal — the Payment tab has a "download files"
+      // button for exactly this.
+      try {
+        const listParams = {
+          page: 1,
+          limit: 1,
+          type: 'invoiceNumber',
+          query: invoice.invoiceNumber,
+          supplierId: 'All',
+        };
+        if (invoice.subCompany?.id) {
+          listParams.subCompanyId = invoice.subCompany.id;
+        }
+        const fresh = (await getMultiContainerInvoices(listParams))?.invoices?.[0];
+        if (fresh?.latestPaymentDetail?.id) {
+          const [payment, rawInvoice] = await Promise.all([
+            getPaymentDetail(fresh.latestPaymentDetail.id),
+            getInvoiceById(invoice.id),
+          ]);
+          await downloadApplicationFiles({invoice: fresh, rawInvoice, payment, userId: session?.userId});
+        }
+      } catch (downloadErr) {
+        // Intentionally ignored — see comment above.
+      }
       navigation.goBack();
     } catch (err) {
       setError(err?.response?.data?.message || t('genericErrorMessage'));

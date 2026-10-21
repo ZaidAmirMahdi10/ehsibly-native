@@ -10,6 +10,8 @@ import InvoiceDetailScreen from '../screens/organization/InvoiceDetailScreen';
 import DocumentViewerScreen from '../screens/general/DocumentViewerScreen';
 import SplashScreen from '../screens/general/SplashScreen';
 import CreateInvoiceScreen from '../screens/organization/CreateInvoiceScreen';
+import EditInvoiceDocumentsScreen from '../screens/organization/EditInvoiceDocumentsScreen';
+import EditPaymentDocumentsScreen from '../screens/organization/EditPaymentDocumentsScreen';
 import GenerateApplicationScreen from '../screens/organization/GenerateApplicationScreen';
 import SupplierPickerScreen from '../screens/organization/SupplierPickerScreen';
 import AddSupplierScreen from '../screens/organization/AddSupplierScreen';
@@ -110,6 +112,16 @@ export default function RootNavigator() {
             name="CreateInvoice"
             component={CreateInvoiceScreen}
             options={props => ({...formHeaderOptions(props), title: t('createInvoiceTitle')})}
+          />
+          <Stack.Screen
+            name="EditInvoiceDocuments"
+            component={EditInvoiceDocumentsScreen}
+            options={props => ({...formHeaderOptions(props), title: t('edEditInvoiceDocuments')})}
+          />
+          <Stack.Screen
+            name="EditPaymentDocuments"
+            component={EditPaymentDocumentsScreen}
+            options={props => ({...formHeaderOptions(props), title: t('edEditTransactionDocuments')})}
           />
           <Stack.Screen
             name="GenerateApplication"

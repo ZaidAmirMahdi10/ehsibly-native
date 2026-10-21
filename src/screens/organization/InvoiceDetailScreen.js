@@ -10,41 +10,34 @@ import {
 import {SafeAreaView, useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useTranslation} from 'react-i18next';
 import {useRoute, useNavigation} from '@react-navigation/native';
-import {pick, types, isErrorWithCode, errorCodes} from '@react-native-documents/picker';
 
 import {LanguageContext} from '../../../App';
 
 import {useAlert} from '../../context/AlertContext';
+import {useAuth} from '../../context/AuthContext';
 import CustomText from '../../components/CustomText';
 import StatusBadge from '../../components/StatusBadge';
+import PaymentStatusBadge from '../../components/PaymentStatusBadge';
 import StripedCard from '../../components/StripedCard';
 import LoadingState from '../../components/LoadingState';
 import ErrorState from '../../components/ErrorState';
-import DocumentListItem, {DOC_LABEL_KEYS} from '../../components/DocumentListItem';
-import DocumentUploadZone from '../../components/DocumentUploadZone';
+import DocumentListItem from '../../components/DocumentListItem';
 import InfoBox from '../../components/InfoBox';
 import PrimaryButton from '../../components/PrimaryButton';
 import FormField from '../../components/FormField';
-import ModalSheet from '../../components/ModalSheet';
 import {
   getInvoiceMainFiles,
   getInvoiceFileUrl,
   getInvoiceById,
   getMultiContainerInvoices,
-  updateInvoiceMainFiles,
-  deleteInvoiceDoc,
-  setCustomsDeclarationNumber as saveCustomsDeclarationNumber,
+  saveNotesForBank,
 } from '../../services/invoices/multiContainerWithoutC';
+import {downloadApplicationFiles} from '../../utils/applicationFiles';
 import {
   getPaymentDetail,
+  getInvoicePayments,
   updateInvoicePaymentStatus,
-  updatePaymentDocuments,
 } from '../../services/paymentDetails';
-import {
-  INVOICE_DOC_TYPES,
-  NON_INVOICE_DOC_SOURCES,
-  paymentDocTypesForBank,
-} from '../../constants/documentTypes';
 import {COLORS, makeShadow} from '../../constants/theme';
 
 const TABS = {
@@ -53,31 +46,44 @@ const TABS = {
   CONTAINERS: 'containers',
 };
 
-const CUSTOMS_DECLARATION_TYPE = 'customsDeclaration';
-// Confirmed against the web app (ViewInvoice.js) — the same fixed 6 options,
-// required whenever a customsDeclaration file is uploaded; "03" additionally
-// requires shippingPolicy + exitPermit.
-const BAYAN_NUMBER_OPTIONS = ['01', '02', '03', '04', '05', '06'];
-const BAYAN_NUMBER_REQUIRING_SHIPPING_DOCS = '03';
-// Only relevant — and only shown as an upload option — when bayan 03 is
-// selected, per the web app's validation in ViewInvoice.js.
-const SHIPPING_DOCS_FOR_BAYAN_03 = ['shippingPolicy', 'exitPermit'];
-const OTHER_DOC_UPLOAD_KEY = 'otherDoc';
+// Sources merged into the GET response from other tables — the web page's
+// getInvoiceDocs drops them from the invoice's own doc list.
+const HIDDEN_DOC_TYPES = [
+  'supplierCertificate',
+  'articleOfAssociation',
+  'articlesOfAssociation',
+  'finalAccounts',
+  'BaghdadTransactionRequest',
+];
 // Base cosmetic top padding for detailHeader — kept as a raw constant (not
 // read back off styles.detailHeader) since StyleSheet.create() output isn't
 // guaranteed to still expose plain numeric fields at render time.
 const DETAIL_HEADER_BASE_PADDING_TOP = Platform.OS === 'android' ? 16 : 10;
 
-// Receives the already-enriched invoice object from HomeScreen's list fetch
-// (generalBadgeStatus, latestPaymentDetail, applicationBank, etc. are all
-// computed server-side by the list endpoint, not by getMultiContainersInvoiceById
-// — re-fetching a raw invoice here would mean re-deriving that logic
-// client-side for no benefit, so we just consume what was already fetched).
+// Web ViewInvoice.js's invoiceStatus, derived from the invoice's companyStatus.
+const invoiceStatusFromCompanyStatus = companyStatus =>
+  ({
+    NOT_STARTED: 'SENT',
+    NOT_SENT: 'NOT_SENT',
+    PENDING: 'PENDING',
+    REJECTED: 'INCOMPLETE',
+    ACCEPTED: 'ACCEPTED',
+    SENT_TO_POLICIES: 'PRIMARY_CHECK',
+  })[companyStatus] || 'PENDING';
+
+const dateOnly = value => (value ? new Date(value).toISOString().split('T')[0] : '');
+
+// Mirrors the web's ViewInvoice page: invoice/other/bank documents, an
+// "edit documents" action gated on the invoice's bank status, bank notes, and
+// the full list of the invoice's payments. Edits happen on their own screens
+// (EditInvoiceDocuments / EditPaymentDocuments) with a single Save, like the
+// web's modals.
 const InvoiceDetailScreen = () => {
   const {t} = useTranslation();
   const route = useRoute();
   const navigation = useNavigation();
   const {showAlert} = useAlert();
+  const {session} = useAuth();
   const {currentDirection} = useContext(LanguageContext);
   const isRTL = currentDirection === 'rtl';
   const rowDirection = {flexDirection: isRTL ? 'row-reverse' : 'row'};
@@ -85,9 +91,8 @@ const InvoiceDetailScreen = () => {
 
   // Local, refreshable copy of the invoice — the route param is a snapshot
   // from the list fetch and goes stale the moment a bank application is
-  // generated or sent (latestPaymentDetail/generalBadgeStatus change
-  // server-side), so we re-pull it on focus rather than trusting the param
-  // forever.
+  // generated or sent, so we re-pull it on focus rather than trusting the
+  // param forever.
   const [invoice, setInvoice] = useState(route.params.invoice);
   const hasContainers = Array.isArray(invoice.containers) && invoice.containers.length > 0;
 
@@ -96,16 +101,60 @@ const InvoiceDetailScreen = () => {
   const [invoiceDocs, setInvoiceDocs] = useState([]);
   const [docsLoading, setDocsLoading] = useState(true);
   const [docsError, setDocsError] = useState(null);
-  const [bayanNumber, setBayanNumber] = useState(null);
-  const [bayanPickerVisible, setBayanPickerVisible] = useState(false);
-  const [otherFileModalVisible, setOtherFileModalVisible] = useState(false);
-  const [newOtherFileName, setNewOtherFileName] = useState('');
 
-  const [paymentDetail, setPaymentDetail] = useState(null);
-  const [paymentLoading, setPaymentLoading] = useState(!!invoice.latestPaymentDetail?.id);
-  const [paymentError, setPaymentError] = useState(null);
+  // Every payment of the invoice, each with its bank-form docs attached.
+  const [payments, setPayments] = useState([]);
+  const [paymentsLoading, setPaymentsLoading] = useState(true);
+  const [paymentsError, setPaymentsError] = useState(null);
+
+  // Raw getMultiContainersInvoiceById row (bank/branch/account ids, bankStatus,
+  // companyStatus, rejectionReason, notesForBank…) — the list DTO omits them.
+  const [rawInvoice, setRawInvoice] = useState(null);
+
   const [isSendingToBank, setIsSendingToBank] = useState(false);
-  const [uploadingType, setUploadingType] = useState(null);
+  const [downloadingId, setDownloadingId] = useState(null);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [notesDraft, setNotesDraft] = useState('');
+  const [isSavingNotes, setIsSavingNotes] = useState(false);
+
+  const loadInvoiceDocs = async () => {
+    setDocsLoading(true);
+    setDocsError(null);
+    try {
+      const data = await getInvoiceMainFiles(invoice.id);
+      setInvoiceDocs((data?.data?.documents || []).filter(doc => !HIDDEN_DOC_TYPES.includes(doc.type)));
+    } catch (err) {
+      setDocsError(t('genericErrorMessage'));
+    } finally {
+      setDocsLoading(false);
+    }
+  };
+
+  const loadPayments = async () => {
+    setPaymentsLoading(true);
+    setPaymentsError(null);
+    try {
+      const list = await getInvoicePayments(invoice.id);
+      const details = await Promise.all((list || []).map(p => getPaymentDetail(p.id)));
+      setPayments((list || []).map((p, i) => ({...p, docs: details[i]?.MCIPaymentDocs || [], currency: details[i]?.currency})));
+    } catch (err) {
+      setPaymentsError(t('genericErrorMessage'));
+    } finally {
+      setPaymentsLoading(false);
+    }
+  };
+
+  const loadRawInvoice = async () => {
+    try {
+      const full = await getInvoiceById(invoice.id);
+      if (full) {
+        setRawInvoice(full);
+        setInvoice(prev => ({...prev, notesForBank: full.notesForBank, bankStatus: full.bankStatus}));
+      }
+    } catch (err) {
+      // Non-fatal: bank-notes / gating just stay at their last known values.
+    }
+  };
 
   const refreshInvoice = async () => {
     try {
@@ -130,74 +179,17 @@ const InvoiceDetailScreen = () => {
     } catch (err) {
       // Non-fatal — the screen keeps showing the last known state.
     }
-    // loadPaymentDetail/loadInvoiceDocs only re-run automatically when
-    // invoice.id or invoice.latestPaymentDetail?.id changes — but editing an
-    // existing NOT_SENT/REJECTED application (the common case) updates that
-    // same payment row in place, so the id never changes. Without an explicit
-    // reload here, coming back from "Edit Request" would keep showing
-    // whatever bank-form list was loaded on this screen's first mount, no
-    // matter how many times the application gets regenerated.
-    loadPaymentDetail();
+    loadRawInvoice();
     loadInvoiceDocs();
+    loadPayments();
   };
-
-  const loadInvoiceDocs = async () => {
-    setDocsLoading(true);
-    setDocsError(null);
-    try {
-      const data = await getInvoiceMainFiles(invoice.id);
-      setInvoiceDocs(data?.data?.documents || []);
-      setBayanNumber(data?.data?.customsDeclrationNumber || null);
-    } catch (err) {
-      setDocsError(t('genericErrorMessage'));
-    } finally {
-      setDocsLoading(false);
-    }
-  };
-
-  const loadPaymentDetail = async () => {
-    const paymentId = invoice.latestPaymentDetail?.id;
-    if (!paymentId) {
-      setPaymentDetail(null);
-      setPaymentLoading(false);
-      return;
-    }
-    setPaymentLoading(true);
-    setPaymentError(null);
-    try {
-      const data = await getPaymentDetail(paymentId);
-      setPaymentDetail(data);
-    } catch (err) {
-      setPaymentError(t('genericErrorMessage'));
-    } finally {
-      setPaymentLoading(false);
-    }
-  };
-
-  // notesForBank isn't part of the list endpoint's hand-built DTO, so the
-  // route-param invoice never carries it — the byId endpoint returns the raw
-  // row (all scalars), same as the web app's ViewInvoice.
-  useEffect(() => {
-    (async () => {
-      try {
-        const full = await getInvoiceById(invoice.id);
-        if (full) {
-          // Both fields are raw columns the list endpoint's DTO omits:
-          // notesForBank for display, bankStatus for the Edit/Send gating.
-          setInvoice(prev => ({...prev, notesForBank: full.notesForBank, bankStatus: full.bankStatus}));
-        }
-      } catch (err) {
-        // Non-fatal: the note simply stays hidden if this lookup fails.
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   useEffect(() => {
+    loadRawInvoice();
     loadInvoiceDocs();
-    loadPaymentDetail();
+    loadPayments();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [invoice.id, invoice.latestPaymentDetail?.id]);
+  }, [invoice.id]);
 
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', refreshInvoice);
@@ -208,235 +200,66 @@ const InvoiceDetailScreen = () => {
   const handleViewDoc = doc => {
     navigation.navigate('DocumentViewer', {
       url: getInvoiceFileUrl(doc.id),
-      title: t(DOC_LABEL_KEYS[doc.type] || 'docViewBtn'),
+      title: doc.type,
     });
   };
 
-  const handleDeleteDoc = doc => {
-    showAlert(t('deleteDocConfirmTitle'), t('deleteDocConfirmMessage'), [
-      {text: t('cancel'), style: 'cancel'},
-      {
-        text: t('deleteAction'),
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteInvoiceDoc(doc.id);
-            await loadInvoiceDocs();
-          } catch (err) {
-            showAlert(t('genericErrorMessage'));
-          }
-        },
-      },
-    ]);
-  };
+  const lastPayment = payments[payments.length - 1];
+  const isEditablePaymentStatus = status => status === 'NOT_SENT' || status === 'REJECTED';
+  // Web: the last payment is still editable, or the bank rejected the invoice.
+  const canEditPayment = isEditablePaymentStatus(lastPayment?.companyPaymentStatus) || rawInvoice?.bankStatus === 'REJECTED';
+  // Web's canEditDocument (getMultiContainersInvoiceWithoutC).
+  const allowEditDocuments = rawInvoice?.bankStatus === 'REJECTED' || rawInvoice?.bankStatus === 'NOT_SENT';
+  // Web's validateDocuments: the invoice plus Baghdad's transaction request.
+  const hasInvoiceDoc = invoiceDocs.some(doc => doc.type === 'invoice');
+  const hasTransactionRequest = payments.some(p => p.docs.some(doc => doc.type === 'BaghdadTransactionRequest'));
+  const isSendDisabled = !(hasInvoiceDoc && hasTransactionRequest);
+  const invoiceStatus = invoiceStatusFromCompanyStatus(rawInvoice?.companyStatus);
+  const bankDocs = payments.flatMap(p => p.docs);
+  const invoiceTypeDocs = invoiceDocs.filter(doc => doc.type.startsWith('invoice'));
+  const otherTypeDocs = invoiceDocs.filter(doc => !doc.type.startsWith('invoice'));
 
-  // Both upload endpoints are full syncs of their doc set — any known field
-  // omitted from the request gets deleted server-side. So every upload here
-  // must also send an empty-string "keep" marker for every doc already on
-  // the invoice/payment other than the one being added, or it'll silently
-  // wipe out the rest.
-  const uploadDocument = async ({docType, existingTypes, upload, onDone}) => {
-    let file;
+  const handleSaveNotes = async () => {
+    setIsSavingNotes(true);
     try {
-      [file] = await pick({type: [types.pdf, types.images]});
-    } catch (err) {
-      if (!(isErrorWithCode(err) && err.code === errorCodes.OPERATION_CANCELED)) {
-        showAlert(t('uploadErrorMessage'));
-      }
-      return;
-    }
-
-    setUploadingType(docType);
-    try {
-      const formData = new FormData();
-      formData.append(docType, {
-        uri: file.uri,
-        name: file.name || docType,
-        type: file.type || 'application/pdf',
-      });
-      existingTypes
-        .filter(existingType => existingType !== docType)
-        .forEach(existingType => formData.append(existingType, ''));
-
-      await upload(formData);
-      await onDone();
-    } catch (err) {
-      showAlert(t('uploadErrorMessage'));
-    } finally {
-      setUploadingType(null);
-    }
-  };
-
-  const handleUploadInvoiceDoc = docType =>
-    uploadDocument({
-      docType,
-      existingTypes: invoiceDocs
-        .map(doc => doc.type)
-        .filter(existingType => !NON_INVOICE_DOC_SOURCES.includes(existingType)),
-      upload: formData => updateInvoiceMainFiles(invoice.id, formData),
-      onDone: loadInvoiceDocs,
-    });
-
-  const handleUploadPaymentDoc = docType =>
-    uploadDocument({
-      docType,
-      existingTypes: (paymentDetail?.MCIPaymentDocs || []).map(doc => doc.type),
-      upload: formData => updatePaymentDocuments(paymentDetail.id, invoice.id, formData),
-      onDone: loadPaymentDetail,
-    });
-
-  // Any doc on this invoice whose type isn't one of the fixed known ones is
-  // a user-named "other" doc (confirmed against the web app: ViewInvoice.js
-  // buckets anything unrecognized into otherFiles, using the type itself as
-  // the display name). Unlike fixed doc types, these are additive — the
-  // backend never auto-deletes them on sync, and supports any number of
-  // them via indexed otherDoc_N fields.
-  const isOtherDocType = type => !INVOICE_DOC_TYPES.includes(type) && !NON_INVOICE_DOC_SOURCES.includes(type);
-
-  const handleAddOtherFile = async name => {
-    let file;
-    try {
-      [file] = await pick({type: [types.pdf, types.images]});
-    } catch (err) {
-      if (!(isErrorWithCode(err) && err.code === errorCodes.OPERATION_CANCELED)) {
-        showAlert(t('uploadErrorMessage'));
-      }
-      return;
-    }
-
-    setUploadingType(OTHER_DOC_UPLOAD_KEY);
-    try {
-      const formData = new FormData();
-
-      // Keep every existing fixed-type doc untouched.
-      invoiceDocs
-        .filter(doc => !isOtherDocType(doc.type))
-        .forEach(doc => formData.append(doc.type, ''));
-
-      // Keep every existing other doc at its own index, re-declaring its
-      // name — the backend only protects an otherDoc from the full-sync
-      // delete sweep if its name is present in *this* request's
-      // otherDocNames metadata, regardless of whether the file itself was
-      // re-uploaded or just kept.
-      const existingOtherDocs = invoiceDocs.filter(doc => isOtherDocType(doc.type));
-      const otherDocMetadata = existingOtherDocs.map((doc, index) => {
-        formData.append(`otherDoc_${index}`, '');
-        return {index, name: doc.type};
-      });
-
-      const newIndex = existingOtherDocs.length;
-      formData.append(`otherDoc_${newIndex}`, {
-        uri: file.uri,
-        name: file.name || name,
-        type: file.type || 'application/pdf',
-      });
-      otherDocMetadata.push({index: newIndex, name});
-      formData.append('otherDocNames', JSON.stringify(otherDocMetadata));
-
-      await updateInvoiceMainFiles(invoice.id, formData);
-      await loadInvoiceDocs();
-    } catch (err) {
-      showAlert(t('uploadErrorMessage'));
-    } finally {
-      setUploadingType(null);
-    }
-  };
-
-  const handleConfirmAddOtherFile = () => {
-    const name = newOtherFileName.trim();
-    if (!name) {
-      return;
-    }
-    setOtherFileModalVisible(false);
-    setNewOtherFileName('');
-    // Presenting the native file picker in the same tick as closing this
-    // Modal races its dismissal animation and hangs the app (confirmed
-    // directly) — give it a moment to fully close first.
-    setTimeout(() => handleAddOtherFile(name), 400);
-  };
-
-  // The web app requires a bayan/customs-declaration number ("01".."06")
-  // whenever a customsDeclaration file is uploaded — it's a separate field
-  // on the invoice itself (not a doc), persisted via its own PUT after the
-  // file upload succeeds. If one isn't picked yet, ask first.
-  const handleUploadCustomsDeclaration = () => {
-    if (!bayanNumber) {
-      setBayanPickerVisible(true);
-      return;
-    }
-    handleUploadInvoiceDoc(CUSTOMS_DECLARATION_TYPE);
-  };
-
-  const handleSelectBayanNumber = async value => {
-    setBayanPickerVisible(false);
-    try {
-      await saveCustomsDeclarationNumber(invoice.id, value);
-      setBayanNumber(value);
-      // Same modal-dismissal-vs-picker-presentation race as
-      // handleConfirmAddOtherFile — the network call above usually gives
-      // the modal enough time to close, but isn't guaranteed to, so add
-      // the same explicit buffer.
-      setTimeout(() => handleUploadInvoiceDoc(CUSTOMS_DECLARATION_TYPE), 400);
+      await saveNotesForBank(invoice.id, notesDraft);
+      setNotesOpen(false);
+      await loadRawInvoice();
     } catch (err) {
       showAlert(t('genericErrorMessage'));
+    } finally {
+      setIsSavingNotes(false);
     }
   };
 
-  const handleSendToBank = async () => {
-    // Document-completeness gate (explicit product decision 2026-07-09: the
-    // stricter bayan-based set, deliberately broader than web
-    // ViewInvoice.js's validateDocuments):
-    //   - invoice-level: invoice + customsDeclaration always, plus
-    //     shippingPolicy + exitPermit when bayan is '03'
-    //     (thirdPartyContract stays optional)
-    //   - payment-level: every form slot the application bank defines
-    //     (the 5 Baghdad forms / 4 Mansur forms)
-    // Docs are re-fetched here so the check can't pass on stale local state
-    // (e.g. a doc deleted from the web app since this screen loaded).
-    let currentDocs = invoiceDocs;
-    let currentBayan = bayanNumber;
-    try {
-      const data = await getInvoiceMainFiles(invoice.id);
-      currentDocs = data?.data?.documents || [];
-      currentBayan = data?.data?.customsDeclrationNumber || bayanNumber;
-    } catch (err) {
-      // Network hiccup — fall back to the state already on screen rather
-      // than blocking the action outright.
-    }
-    const requiredInvoiceDocs = ['invoice', CUSTOMS_DECLARATION_TYPE];
-    if (currentBayan === BAYAN_NUMBER_REQUIRING_SHIPPING_DOCS) {
-      requiredInvoiceDocs.push(...SHIPPING_DOCS_FOR_BAYAN_03);
-    }
-    const requiredPaymentDocs = paymentDocTypesForBank(invoice.applicationBank?.nameWithNoSpace);
-    const missing = [
-      ...requiredInvoiceDocs.filter(type => !currentDocs.some(doc => doc.type === type)),
-      ...requiredPaymentDocs.filter(
-        type => !(paymentDetail?.MCIPaymentDocs || []).some(doc => doc.type === type),
-      ),
-    ];
-    if (missing.length > 0) {
-      const missingLabels = missing.map(type => `• ${t(DOC_LABEL_KEYS[type] || type)}`).join('\n');
-      showAlert(
-        t('sendToBankMissingDocsTitle'),
-        `${t('sendToBankMissingDocsMessage')}\n\n${missingLabels}`,
-      );
+  const handleDownloadFiles = async payment => {
+    if (!rawInvoice) {
       return;
     }
+    setDownloadingId(payment.id);
+    try {
+      await downloadApplicationFiles({invoice, rawInvoice, payment, userId: session?.userId});
+    } catch (err) {
+      if (!(err?.message && /cancel/i.test(err.message))) {
+        showAlert(t('downloadFilesError'));
+      }
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
-    showAlert(t('sendToBankConfirmTitle'), t('sendToBankConfirmMessage'), [
+  const handleSendToBank = () => {
+    showAlert(t('sendToBankConfirmTitle'), t('edSendConfirm'), [
       {text: t('cancel'), style: 'cancel'},
       {
         text: t('sendToBankAction'),
         onPress: async () => {
           setIsSendingToBank(true);
           try {
-            // The real "Send to Bank" action confirmed against the web app:
-            // a plain status write, not an email.
-            await updateInvoicePaymentStatus(paymentDetail.id, {status: 'NOT_STARTED'});
+            await updateInvoicePaymentStatus(lastPayment.id, {status: 'NOT_STARTED'});
             await refreshInvoice();
-            await loadPaymentDetail();
           } catch (err) {
-            showAlert(t('genericErrorMessage'));
+            showAlert(t('edSendError'));
           } finally {
             setIsSendingToBank(false);
           }
@@ -444,6 +267,11 @@ const InvoiceDetailScreen = () => {
       },
     ]);
   };
+
+  const renderDocs = docs =>
+    docs.map(doc => (
+      <DocumentListItem key={doc.id} type={doc.type} isRTL={isRTL} onView={() => handleViewDoc(doc)} />
+    ));
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
@@ -570,7 +398,7 @@ const InvoiceDetailScreen = () => {
             ))}
           </View>
         ) : activeTab === TABS.DOCUMENTS ? (
-          docsLoading ? (
+          docsLoading || paymentsLoading ? (
             <View style={styles.card}>
               <LoadingState />
             </View>
@@ -583,218 +411,223 @@ const InvoiceDetailScreen = () => {
               <CustomText bold style={styles.sectionTitle}>
                 {t('invoiceDocumentsTitle')}
               </CustomText>
-              {invoiceDocs.map(doc => (
-                <React.Fragment key={doc.id}>
-                  {doc.type === CUSTOMS_DECLARATION_TYPE && bayanNumber ? (
-                    <TouchableOpacity
-                      style={[styles.bayanRow, rowDirection]}
-                      onPress={() => setBayanPickerVisible(true)}
-                      activeOpacity={0.7}>
-                      <CustomText style={styles.bayanLabel} paddingTop={0}>
-                        {t('bayanNumberLabel')}
-                      </CustomText>
-                      <CustomText bold style={styles.bayanValue} paddingTop={0}>
-                        {bayanNumber} · {t('changeAction')}
-                      </CustomText>
-                    </TouchableOpacity>
-                  ) : null}
-                  <DocumentListItem
-                    type={doc.type}
-                    isRTL={isRTL}
-                    onView={() => handleViewDoc(doc)}
-                    onDelete={() => handleDeleteDoc(doc)}
-                  />
-                </React.Fragment>
-              ))}
-              {bayanNumber === BAYAN_NUMBER_REQUIRING_SHIPPING_DOCS ? (
-                <InfoBox text={t('bayan03RequiresShippingDocsNote')} style={styles.infoNote} />
-              ) : null}
-              <View style={styles.uploadSection}>
-                {INVOICE_DOC_TYPES.filter(type => {
-                  if (invoiceDocs.some(doc => doc.type === type)) {
-                    return false;
-                  }
-                  if (
-                    SHIPPING_DOCS_FOR_BAYAN_03.includes(type) &&
-                    bayanNumber !== BAYAN_NUMBER_REQUIRING_SHIPPING_DOCS
-                  ) {
-                    return false;
-                  }
-                  return true;
-                }).map(type => (
-                  <DocumentUploadZone
-                    key={type}
-                    label={t(DOC_LABEL_KEYS[type])}
-                    optional={type === 'thirdPartyContract'}
-                    uploading={uploadingType === type}
-                    onPress={() =>
-                      type === CUSTOMS_DECLARATION_TYPE
-                        ? handleUploadCustomsDeclaration()
-                        : handleUploadInvoiceDoc(type)
-                    }
-                  />
-                ))}
-              </View>
+              {invoiceTypeDocs.length ? renderDocs(invoiceTypeDocs) : <InfoBox text={t('edNoDocuments')} style={styles.infoNote} />}
 
-              {invoiceDocs
-                .filter(doc => isOtherDocType(doc.type))
-                .map(doc => (
-                  <DocumentListItem
-                    key={doc.id}
-                    type={doc.type}
-                    isRTL={isRTL}
-                    onView={() => handleViewDoc(doc)}
-                    onDelete={() => handleDeleteDoc(doc)}
-                  />
-                ))}
-              <PrimaryButton
-                title={`+ ${t('addOtherFileAction')} (${t('optional')})`}
-                variant="secondary"
-                loading={uploadingType === OTHER_DOC_UPLOAD_KEY}
-                onPress={() => setOtherFileModalVisible(true)}
-                style={styles.addOtherFileBtn}
-              />
+              <CustomText bold style={styles.sectionTitle}>
+                {t('edOtherDocs')}
+              </CustomText>
+              {otherTypeDocs.length ? renderDocs(otherTypeDocs) : <InfoBox text={t('edNoDocuments')} style={styles.infoNote} />}
 
-              {paymentDetail ? (
-                <>
-                  <CustomText bold style={styles.sectionTitle}>
-                    {t('bankFormsTitle')}
-                  </CustomText>
-                  {(paymentDetail.MCIPaymentDocs || []).map(doc => (
-                    <DocumentListItem key={doc.id} type={doc.type} isRTL={isRTL} onView={() => handleViewDoc(doc)} />
-                  ))}
-                  <View style={styles.uploadSection}>
-                    {paymentDocTypesForBank(invoice.applicationBank?.nameWithNoSpace)
-                      .filter(
-                        type =>
-                          !(paymentDetail.MCIPaymentDocs || []).some(doc => doc.type === type),
-                      )
-                      .map(type => (
-                        <DocumentUploadZone
-                          key={type}
-                          label={t(DOC_LABEL_KEYS[type])}
-                          uploading={uploadingType === type}
-                          onPress={() => handleUploadPaymentDoc(type)}
-                        />
-                      ))}
-                  </View>
-                </>
-              ) : null}
-            </>
-          )
-        ) : paymentLoading ? (
-        <View style={styles.card}>
-          <LoadingState />
-        </View>
-      ) : paymentError ? (
-        <View style={styles.card}>
-          <ErrorState message={paymentError} onRetry={loadPaymentDetail} />
-        </View>
-      ) : !paymentDetail ? (
-        <View style={styles.card}>
-          <View style={styles.emptyActionWrap}>
-            <CustomText center style={styles.emptyText}>
-              {t('noPaymentYet')}
-            </CustomText>
-            <PrimaryButton
-              title={t('generateApplicationAction')}
-              onPress={() => navigation.navigate('GenerateApplication', {invoice})}
-              style={[styles.actionBtn, styles.fullWidthBtn]}
-            />
-          </View>
-        </View>
-      ) : (
-        <>
-          <StripedCard
-            isRTL={isRTL}
-            cardStyle={styles.cardPolish}
-            items={[
-              {
-                label: t('paymentAmount'),
-                value: `${paymentDetail.amount} ${paymentDetail.currency}`,
-              },
-              {
-                label: t('paymentStatus'),
-                value: <StatusBadge status={paymentDetail.companyPaymentStatus} />,
-              },
-              {label: t('paymentReference'), value: paymentDetail.refrenceNumber},
-              {label: t('paymentPurpose'), value: paymentDetail.purposeOfPayment},
-              {label: t('transactionNumber'), value: paymentDetail.transactionNumber},
-            ]}
-          />
+              <CustomText bold style={styles.sectionTitle}>
+                {t('bankFormsTitle')}
+              </CustomText>
+              {bankDocs.length ? renderDocs(bankDocs) : <InfoBox text={t('edNoDocuments')} style={styles.infoNote} />}
 
-          <View style={styles.actionsWrap}>
-            {/* Matches web ViewInvoice.js's canEditPayment: an invoice-level
-                bank rejection re-opens editing even when the payment's own
-                status isn't NOT_SENT/REJECTED. */}
-            {paymentDetail.companyPaymentStatus === 'NOT_SENT' ||
-            paymentDetail.companyPaymentStatus === 'REJECTED' ||
-            invoice.bankStatus === 'REJECTED' ? (
-              <>
+              <View style={styles.actionsWrap}>
                 <PrimaryButton
-                  title={t('editApplicationAction')}
+                  title={t('edEditDocuments')}
                   variant="secondary"
-                  onPress={() => navigation.navigate('GenerateApplication', {invoice})}
+                  disabled={!allowEditDocuments}
+                  onPress={() => navigation.navigate('EditInvoiceDocuments', {invoiceId: invoice.id})}
                   style={styles.actionBtn}
                 />
+                {notesOpen ? (
+                  <>
+                    <FormField
+                      label={t('notesForBankLabel')}
+                      value={notesDraft}
+                      onChangeText={setNotesDraft}
+                      multiline
+                    />
+                    <View style={[styles.notesActions, rowDirection]}>
+                      <PrimaryButton
+                        title={t('cancel')}
+                        variant="secondary"
+                        onPress={() => setNotesOpen(false)}
+                        style={styles.notesBtn}
+                      />
+                      <PrimaryButton
+                        title={t('edSave')}
+                        onPress={handleSaveNotes}
+                        loading={isSavingNotes}
+                        style={styles.notesBtn}
+                      />
+                    </View>
+                  </>
+                ) : (
+                  <PrimaryButton
+                    title={t('edAddNotes')}
+                    variant="secondary"
+                    onPress={() => {
+                      setNotesDraft(invoice.notesForBank || '');
+                      setNotesOpen(true);
+                    }}
+                    style={styles.actionBtn}
+                  />
+                )}
+              </View>
+            </>
+          )
+        ) : paymentsLoading ? (
+          <View style={styles.card}>
+            <LoadingState />
+          </View>
+        ) : paymentsError ? (
+          <View style={styles.card}>
+            <ErrorState message={paymentsError} onRetry={loadPayments} />
+          </View>
+        ) : (
+          <>
+            <CustomText bold style={styles.sectionTitle}>
+              {t('edSenderReceiver')}
+            </CustomText>
+            <StripedCard
+              isRTL={isRTL}
+              cardStyle={styles.cardPolish}
+              items={[
+                {
+                  label: t('senderLabel'),
+                  value: isRTL ? invoice.subCompany?.nameInAr || invoice.subCompany?.name : invoice.subCompany?.name,
+                },
+                {label: t('recipientLabel'), value: invoice.supplier?.name},
+              ]}
+            />
+
+            <CustomText bold style={styles.sectionTitle}>
+              {t('edStatusDetails')}
+            </CustomText>
+            <StripedCard
+              isRTL={isRTL}
+              cardStyle={styles.cardPolish}
+              items={[
+                {
+                  label: t('edStatus'),
+                  value: lastPayment?.transactionNumber ? (
+                    <View style={styles.statusStack}>
+                      {invoiceStatus === 'INCOMPLETE' ? <PaymentStatusBadge status={invoiceStatus} /> : null}
+                      <CustomText paddingTop={0} style={styles.transferNumber}>
+                        {t('edTransferNumber')}: {lastPayment.transactionNumber}
+                      </CustomText>
+                    </View>
+                  ) : (
+                    <PaymentStatusBadge status={invoiceStatus} />
+                  ),
+                },
+                ...(rawInvoice?.rejectionReason
+                  ? [{label: t('edDeclineReason'), value: rawInvoice.rejectionReason}]
+                  : []),
+              ]}
+            />
+
+            <CustomText bold style={styles.sectionTitle}>
+              {t('edPayments')}
+            </CustomText>
+            {payments.length === 0 ? (
+              <InfoBox text={t('edNoPayments')} style={styles.infoNote} />
+            ) : (
+              payments.map(payment => {
+                const currency = payment.currency || invoice.currency || invoice.supplier?.currency || 'USD';
+                return (
+                  <View key={payment.id} style={styles.paymentCard}>
+                    <View style={[styles.paymentTop, rowDirection]}>
+                      <CustomText bold style={styles.paymentAmount} paddingTop={0}>
+                        {Number(payment.amount).toFixed(4)} {currency}
+                      </CustomText>
+                      <CustomText style={styles.paymentDate} paddingTop={0}>
+                        {dateOnly(payment.date)}
+                      </CustomText>
+                    </View>
+                    <View style={styles.paymentStatusRow}>
+                      {payment.transactionNumber ? (
+                        <>
+                          {payment.companyPaymentStatus === 'REJECTED' ? (
+                            <PaymentStatusBadge status={payment.companyPaymentStatus} />
+                          ) : null}
+                          <CustomText paddingTop={0} style={styles.transferNumber}>
+                            {t('edTransferNumber')}: {payment.transactionNumber}
+                          </CustomText>
+                        </>
+                      ) : (
+                        <PaymentStatusBadge
+                          status={payment.companyPaymentStatus === 'SENT_TO_POLICIES' ? 'PRIMARY_CHECK' : payment.companyPaymentStatus}
+                        />
+                      )}
+                    </View>
+                    {payment.docs.length ? (
+                      <View style={styles.paymentDocs}>{renderDocs(payment.docs)}</View>
+                    ) : null}
+                    <View style={[styles.paymentActions, rowDirection]}>
+                      <PrimaryButton
+                        title={t('edEdit')}
+                        variant="secondary"
+                        disabled={!isEditablePaymentStatus(payment.companyPaymentStatus)}
+                        onPress={() =>
+                          navigation.navigate('EditPaymentDocuments', {
+                            invoiceId: invoice.id,
+                            paymentId: payment.id,
+                            bankNameWithNoSpace: invoice.applicationBank?.nameWithNoSpace,
+                          })
+                        }
+                        style={styles.paymentBtn}
+                      />
+                      <PrimaryButton
+                        title={t('downloadFilesAction')}
+                        variant="secondary"
+                        loading={downloadingId === payment.id}
+                        disabled={downloadingId != null}
+                        onPress={() => handleDownloadFiles(payment)}
+                        style={styles.paymentBtn}
+                      />
+                    </View>
+                  </View>
+                );
+              })
+            )}
+
+            {lastPayment?.companyPaymentStatus === 'NOT_STARTED' ? (
+              <InfoBox variant="success" text={t('edSentToBank')} style={styles.infoNote} />
+            ) : null}
+            {canEditPayment && isSendDisabled ? (
+              <InfoBox text={t('edUploadMandatory')} style={styles.infoNote} />
+            ) : null}
+            {canEditPayment && lastPayment ? (
+              <View style={styles.actionsWrap}>
                 <PrimaryButton
                   title={t('sendToBankAction')}
                   onPress={handleSendToBank}
                   loading={isSendingToBank}
+                  disabled={isSendDisabled}
                   style={styles.actionBtn}
                 />
-              </>
-            ) : (
-              <CustomText center style={styles.sentNotice}>
-                {t('applicationSentNotice')}
-              </CustomText>
-            )}
-          </View>
-        </>
-      )}
+              </View>
+            ) : null}
+          </>
+        )}
       </ScrollView>
-
-      <ModalSheet
-        visible={bayanPickerVisible}
-        onClose={() => setBayanPickerVisible(false)}
-        title={t('bayanNumberModalTitle')}>
-        {BAYAN_NUMBER_OPTIONS.map(option => (
-          <TouchableOpacity
-            key={option}
-            style={[styles.modalOption, bayanNumber === option && styles.modalOptionActive]}
-            onPress={() => handleSelectBayanNumber(option)}>
-            <CustomText
-              center
-              bold={bayanNumber === option}
-              style={[
-                styles.modalOptionText,
-                bayanNumber === option && styles.modalOptionTextActive,
-              ]}
-              paddingTop={0}>
-              {option}
-            </CustomText>
-          </TouchableOpacity>
-        ))}
-      </ModalSheet>
-
-      <ModalSheet
-        visible={otherFileModalVisible}
-        onClose={() => setOtherFileModalVisible(false)}
-        title={t('addOtherFileAction')}>
-        <FormField
-          label={t('otherFileNameLabel')}
-          required
-          value={newOtherFileName}
-          onChangeText={setNewOtherFileName}
-          autoFocus
-        />
-        <PrimaryButton title={t('addOtherFileAction')} onPress={handleConfirmAddOtherFile} />
-      </ModalSheet>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  statusStack: {alignItems: 'flex-end', gap: 6},
+  transferNumber: {fontSize: 12, color: COLORS.success, fontWeight: '700'},
+  paymentCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 14,
+    marginBottom: 10,
+  },
+  paymentTop: {justifyContent: 'space-between', alignItems: 'center'},
+  paymentAmount: {fontSize: 15, color: COLORS.text},
+  paymentDate: {fontSize: 12, color: COLORS.textMuted},
+  paymentStatusRow: {marginTop: 8, gap: 6, alignItems: 'flex-start'},
+  paymentDocs: {marginTop: 10},
+  paymentActions: {marginTop: 10, gap: 8},
+  paymentBtn: {flex: 1},
+  notesActions: {gap: 8},
+  notesBtn: {flex: 1},
   safeArea: {flex: 1, backgroundColor: COLORS.bg},
   flex: {flex: 1},
   container: {padding: 16, paddingBottom: 40},

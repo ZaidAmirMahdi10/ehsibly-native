@@ -12,6 +12,21 @@ export const getMultiContainerInvoices = async (params = {}) => {
 
 // Backend reads the invoice id from a header, not a query/path param —
 // confirmed against ehsibly-frontend/src/services/invoices/multiContainerWithoutC.js.
+// Archived invoices live on a different, un-prefixed route and read their
+// scope from headers — mirrors the web's getArchivedMultiContainerInvoicesWithouC.
+export const getArchivedMultiContainerInvoices = async (params = {}) => {
+  const response = await apiClient.get('/getArchivedMultiContainersInvoicesWithoutC', {
+    params,
+    headers: {
+      'User-Id': params.userId ?? 'NaN',
+      'Supplier-Id': params.supplierId,
+      'Customer-Id': params.customerId || 'All',
+      'Organization-Id': params.organizationId,
+    },
+  });
+  return response.data;
+};
+
 export const getInvoiceById = async invoiceId => {
   const response = await apiClient.get(
     `${route}/getMultiContainersInvoiceById`,
@@ -87,5 +102,15 @@ export const createInvoice = async payload => {
 // internal to the organization and is never shown to the bank.
 export const saveNotesForBank = async (invoiceId, notes) => {
   const response = await apiClient.put(`${route}/addNotes/${invoiceId}`, {notes});
+  return response.data;
+};
+
+// POST /:id/verify-invoice-number — the web's AI check run right after the
+// main invoice PDF is picked: compares the number extracted from the PDF to
+// the stored one. Advisory only (never blocks the upload).
+export const verifyInvoiceNumber = async (invoiceId, formData) => {
+  const response = await apiClient.post(`/${invoiceId}/verify-invoice-number`, formData, {
+    headers: {'Content-Type': 'multipart/form-data'},
+  });
   return response.data;
 };

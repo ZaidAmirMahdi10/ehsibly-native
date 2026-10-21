@@ -429,6 +429,56 @@ const StatusChip = ({chipKey, label, count, active, onPress, isRTL}) => {
   );
 };
 
+// Always-visible one-tap picker for sender/receiver: "All" + one chip per
+// option. Selecting patches the applied filters directly (same state the
+// bottom sheet's typeaheads write to), so the two stay in sync.
+const EntityChipsRow = ({label, options, selected, onSelect, isRTL, t}) => {
+  const scrollRef = useRef(null);
+  if (!options.length) {
+    return null;
+  }
+  const chips = [{id: null, name: t('selectAll')}, ...options];
+  return (
+    <View style={styles.entityRow}>
+      <CustomText style={styles.entityRowLabel} paddingTop={0} align={isRTL ? 'right' : 'left'}>
+        {label}
+      </CustomText>
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.chipsRow}
+        onContentSizeChange={() => {
+          if (isRTL) {
+            scrollRef.current?.scrollToEnd({animated: false});
+          }
+        }}>
+        {chips.map(opt => {
+          const active = (selected?.id ?? null) === opt.id;
+          return (
+            <TouchableOpacity
+              key={String(opt.id)}
+              activeOpacity={0.8}
+              onPress={() => onSelect(opt.id === null ? null : opt)}
+              style={[
+                styles.statusChip,
+                active
+                  ? {backgroundColor: COLORS.primaryDark, borderColor: COLORS.primaryDark}
+                  : {backgroundColor: COLORS.surface, borderColor: COLORS.border},
+              ]}>
+              <CustomText
+                style={[styles.statusChipLabel, {color: active ? '#fff' : COLORS.text}]}
+                paddingTop={0}>
+                {opt.id === null ? opt.name : optionLabel(opt, isRTL)}
+              </CustomText>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+};
+
 // Removable pill summarizing one applied advanced-filter dimension.
 const ActiveFilterPill = ({label, onClear, isRTL}) => (
   <View style={[styles.activePill, isRTL && styles.activePillRTL]}>
@@ -758,6 +808,10 @@ const BankHomeScreen = () => {
       filterOptionsLoadedRef.current = false;
     }
   }, [session?.organization?.name]);
+
+  useEffect(() => {
+    loadFilterOptions();
+  }, [loadFilterOptions]);
 
   const openSheet = () => {
     setDraftFilters(advancedFilters);
@@ -1405,6 +1459,23 @@ const BankHomeScreen = () => {
         ))}
       </ScrollView>
 
+      <EntityChipsRow
+        label={t('bankSenderLabel')}
+        options={senderOptions}
+        selected={advancedFilters.sender}
+        onSelect={opt => patchAppliedFilters({sender: opt})}
+        isRTL={isRTL}
+        t={t}
+      />
+      <EntityChipsRow
+        label={t('bankFiltersReceiverLabel')}
+        options={receiverOptions}
+        selected={advancedFilters.receiver}
+        onSelect={opt => patchAppliedFilters({receiver: opt})}
+        isRTL={isRTL}
+        t={t}
+      />
+
       {activePills.length > 0 ? (
         <View style={[styles.activePillsRow, isRTL && styles.activePillsRowRTL]}>
           {activePills.map(pill => (
@@ -1656,6 +1727,8 @@ const styles = StyleSheet.create({
   // user feedback: the chips must not run wider than the rest.
   chipsScroll: {flexGrow: 0, flexShrink: 0, marginBottom: 10, marginHorizontal: 16},
   chipsRow: {gap: 8},
+  entityRow: {marginHorizontal: 16, marginBottom: 10, gap: 6},
+  entityRowLabel: {fontSize: 12, fontWeight: '700', color: COLORS.textMuted},
   statusChip: {
     flexDirection: 'row',
     alignItems: 'center',
