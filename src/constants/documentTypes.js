@@ -30,16 +30,10 @@ export const NON_INVOICE_DOC_SOURCES = [
 // PUT multiCInvoicePaymentDetails/:id (multer .fields(), hard-restricted to
 // exactly these 9 names). Which subset is relevant depends on the invoice's
 // applicationBank, mirroring the web app's UploadApplicationsDocumentsModal.
-export const BAGHDAD_PAYMENT_DOC_TYPES = [
-  'BaghdadTransactionRequest',
-  'BaghdadEntryRequest',
-  'BaghdadPromise',
-  'BaghdadConfirmation',
-  'BaghdadPaymentDetails',
-];
+// Baghdad now takes a single file on the web (commit 557487af).
+export const BAGHDAD_PAYMENT_DOC_TYPES = ['BaghdadTransactionRequest'];
 
 export const MANSUR_PAYMENT_DOC_TYPES = [
-  'BankPledge',
   'MansurTransactionRequest',
   'MansurBankPromise',
   'MansurBankForeignCurrencyTradingWindowRequest',
