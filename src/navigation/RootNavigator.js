@@ -124,7 +124,10 @@ export default function RootNavigator() {
           <Stack.Screen
             name="AddSupplier"
             component={AddSupplierScreen}
-            options={props => ({...formHeaderOptions(props), title: t('addSupplierTitle')})}
+            options={props => ({
+              ...formHeaderOptions(props),
+              title: props.route.params?.editItem ? t('editSupplierTitle') : t('addSupplierTitle'),
+            })}
           />
           <Stack.Screen
             name="SubCompanyPicker"
@@ -134,7 +137,10 @@ export default function RootNavigator() {
           <Stack.Screen
             name="AddSubCompany"
             component={AddSubCompanyScreen}
-            options={props => ({...formHeaderOptions(props), title: t('addSubCompanyTitle')})}
+            options={props => ({
+              ...formHeaderOptions(props),
+              title: props.route.params?.editItem ? t('editSubCompanyTitle') : t('addSubCompanyTitle'),
+            })}
           />
           <Stack.Screen
             name="BankPicker"
@@ -144,7 +150,14 @@ export default function RootNavigator() {
           <Stack.Screen
             name="AddBank"
             component={AddBankScreen}
-            options={props => ({...formHeaderOptions(props), title: t('addBankTitle')})}
+            options={props => ({
+              ...formHeaderOptions(props),
+              title: props.route.params?.editItem
+                ? t('editBankTitle')
+                : props.route.params?.isIraqi
+                ? t('addIraqiBankTitle')
+                : t('addBankTitle'),
+            })}
           />
           <Stack.Screen
             name="AboutDeveloper"

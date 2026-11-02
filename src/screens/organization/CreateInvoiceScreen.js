@@ -13,8 +13,9 @@ import InfoBox from '../../components/InfoBox';
 import ModalSheet from '../../components/ModalSheet';
 import {useAuth} from '../../context/AuthContext';
 import {getSupplierBankAccounts} from '../../services/bankAccounts';
-import {createInvoice, saveNotesForBank} from '../../services/invoices/multiContainerWithoutC';
+import {createInvoice} from '../../services/invoices/multiContainerWithoutC';
 import {COLORS} from '../../constants/theme';
+import {sanitizeAmountInput, parseAmount} from '../../utils/format';
 
 const STEP_SUPPLIER = 1;
 const STEP_DETAILS = 2;
@@ -42,11 +43,6 @@ const CreateInvoiceScreen = () => {
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [amountForSupplier, setAmountForSupplier] = useState('');
   const [notes, setNotes] = useState('');
-  // Bank-visible notes — a separate backend column (notesForBank) from the
-  // internal `notes` above, matching the web app's "Notes For Bank" field.
-  // The create endpoint doesn't accept it, so it's saved with a follow-up
-  // addNotes call once the invoice exists.
-  const [notesForBank, setNotesForBank] = useState('');
 
   // Containers are entirely optional (matches the web app's
   // CreateNoCustomerInvoice — zero-or-more "Add container" entries, not a
@@ -94,7 +90,7 @@ const CreateInvoiceScreen = () => {
       setError(t('invoiceNumberRequiredError'));
       return;
     }
-    if (!amountForSupplier || Number(amountForSupplier) <= 0) {
+    if (!amountForSupplier || parseAmount(amountForSupplier) <= 0) {
       setError(t('amountRequiredError'));
       return;
     }
@@ -102,29 +98,21 @@ const CreateInvoiceScreen = () => {
     setError(null);
     setIsSubmitting(true);
     try {
-      const created = await createInvoice({
+      await createInvoice({
         supplierId: supplier.id,
         subCompanyId: subCompany.id,
         organizationId: session?.organization?.id,
         createdBy: session?.userId,
         currency: selectedCurrency,
         invoiceNumber: invoiceNumber.trim(),
-        amountForSupplier: Number(amountForSupplier),
+        amountForSupplier: parseAmount(amountForSupplier),
         date: new Date().toISOString(),
         notes: notes.trim() || undefined,
         containers: containers.map(c => ({containerNumber: c.containerNumber})),
       });
-      const createdInvoiceId = created?.invoice?.id;
-      if (createdInvoiceId && notesForBank.trim()) {
-        try {
-          await saveNotesForBank(createdInvoiceId, notesForBank.trim());
-        } catch (notesErr) {
-          // Non-fatal: the invoice itself was created — surfacing this as a
-          // hard error would tempt a retry that duplicates the invoice. The
-          // note can still be added from the web app's invoice page.
-          console.warn('saveNotesForBank failed after invoice creation', notesErr);
-        }
-      }
+      // Notes-for-bank is not collected here: it's only relevant once an Iraqi
+      // bank is chosen, so it's entered in GenerateApplicationScreen and shown
+      // only when that bank is Bank of Baghdad.
       navigation.goBack();
     } catch (err) {
       setError(err?.response?.data?.message || t('genericErrorMessage'));
@@ -216,7 +204,7 @@ const CreateInvoiceScreen = () => {
             label={t('amountForSupplierLabel')}
             required
             value={amountForSupplier}
-            onChangeText={setAmountForSupplier}
+            onChangeText={text => setAmountForSupplier(sanitizeAmountInput(text))}
             keyboardType="decimal-pad"
           />
 
@@ -239,17 +227,6 @@ const CreateInvoiceScreen = () => {
             style={styles.notesInput}
           />
           <InfoBox text={t('notesNotVisibleToBankNote')} style={styles.infoNote} />
-
-          <FormField
-            label={t('notesForBankLabel')}
-            value={notesForBank}
-            onChangeText={setNotesForBank}
-            placeholder={t('notesForBankPlaceholder')}
-            multiline
-            numberOfLines={4}
-            style={styles.notesInput}
-          />
-          <InfoBox text={t('notesForBankVisibleNote')} style={styles.infoNote} />
 
           <CustomText bold style={styles.sectionTitle}>
             {t('containersTitle')}

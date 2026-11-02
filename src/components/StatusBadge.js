@@ -7,8 +7,11 @@ import CustomText from './CustomText';
 // completed/pending/failed tri-state — the actual API returns one of these.
 const STATUS_STYLES = {
   NOT_SENT: {bg: '#F1F2F4', fg: '#5B6472', labelKey: 'statusNotSent'},
-  NOT_STARTED: {bg: '#EAF1FB', fg: '#2563EB', labelKey: 'statusNotStarted'},
-  PENDING: {bg: '#FFF6E5', fg: '#B7791F', labelKey: 'statusPending'},
+  // "تم الإرسال" (sent) is yellow and "قيد الانتظار" (in progress) is blue —
+  // swapped from the original so sent reads as awaiting-processing and
+  // in-progress reads as active.
+  NOT_STARTED: {bg: '#FFF6E5', fg: '#B7791F', labelKey: 'statusNotStarted'},
+  PENDING: {bg: '#EAF1FB', fg: '#2563EB', labelKey: 'statusPending'},
   PAYMENT_CHECK_PENDING: {bg: '#FFF6E5', fg: '#B7791F', labelKey: 'statusPaymentCheckPending'},
   SENT_TO_POLICIES: {bg: '#EEF2FF', fg: '#4F46E5', labelKey: 'statusSentToPolicies'},
   ACCEPTED: {bg: '#E8F7EE', fg: '#1E8E4F', labelKey: 'statusAccepted'},

@@ -22,3 +22,15 @@ export const createBank = async payload => {
   const response = await apiClient.post('/api/bank', payload);
   return response.data;
 };
+
+// PUT /api/bank/:id — update a bank's name / country / city / branches.
+export const updateBank = async (id, payload) => {
+  const response = await apiClient.put(`/api/bank/${id}`, payload);
+  return response.data;
+};
+
+// DELETE /api/bank/:id
+export const deleteBank = async id => {
+  const response = await apiClient.delete(`/api/bank/${id}`);
+  return response.data;
+};

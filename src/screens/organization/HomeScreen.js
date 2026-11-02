@@ -6,6 +6,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   FlatList,
+  ScrollView,
   StatusBar,
   Animated,
   Easing,
@@ -14,6 +15,7 @@ import {
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useTranslation} from 'react-i18next';
 import {useNavigation} from '@react-navigation/native';
+import {SlidersHorizontal} from 'lucide-react-native';
 
 import {LanguageContext} from '../../../App';
 import {useAuth} from '../../context/AuthContext';
@@ -23,7 +25,20 @@ import StatusBadge from '../../components/StatusBadge';
 import ListEmptyState from '../../components/ListEmptyState';
 import ErrorState from '../../components/ErrorState';
 import SearchInput from '../../components/SearchInput';
+import SelectField from '../../components/SelectField';
+import FormField from '../../components/FormField';
+import DatePickerField from '../../components/DatePickerField';
+import ModalSheet from '../../components/ModalSheet';
+import PrimaryButton from '../../components/PrimaryButton';
 import {getMultiContainerInvoices} from '../../services/invoices/multiContainerWithoutC';
+import {getIraqiBanks} from '../../services/banks';
+import {getSuppliers} from '../../services/suppliers';
+import {formatAmount} from '../../utils/format';
+
+// Sentinel "no filter" option shared by the bank and supplier selects — its
+// label is resolved through t() at render so it localizes, and the backend
+// treats the id "All" as "don't filter by this".
+const ALL_OPTION = {id: 'All'};
 
 const CARD_HEIGHT = 132;
 const CARD_COLLAPSED_HEIGHT = 60;
@@ -62,6 +77,62 @@ const HomeScreen = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState(null);
+
+  // === Filters ===
+  // Draft state edited inside the modal. It only takes effect on "Apply"
+  // (copied into appliedFilters), so opening the sheet, poking around, and
+  // closing it without applying doesn't refetch.
+  const [filtersVisible, setFiltersVisible] = useState(false);
+  const [filterBank, setFilterBank] = useState(ALL_OPTION);
+  const [filterSupplier, setFilterSupplier] = useState(ALL_OPTION);
+  const [filterFromDate, setFilterFromDate] = useState(null);
+  const [filterToDate, setFilterToDate] = useState(null);
+  const [filterAmount, setFilterAmount] = useState('');
+  const [banks, setBanks] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+
+  // Applied snapshot that fetchInvoices actually sends. Mirrored into a ref
+  // so the focus/debounce effects (which close over an older render) always
+  // read the current filters without needing them in their dep arrays.
+  const [appliedFilters, setAppliedFilters] = useState({
+    bankId: 'All',
+    supplierId: 'All',
+    startDate: null,
+    endDate: null,
+    amount: '',
+  });
+  const appliedFiltersRef = useRef(appliedFilters);
+  useEffect(() => {
+    appliedFiltersRef.current = appliedFilters;
+  }, [appliedFilters]);
+
+  const hasActiveFilters =
+    appliedFilters.bankId !== 'All' ||
+    appliedFilters.supplierId !== 'All' ||
+    !!appliedFilters.startDate ||
+    !!appliedFilters.endDate ||
+    !!appliedFilters.amount;
+
+  const optionLabel = item => (item?.id === 'All' ? t('filterAllOption') : item?.name);
+  const bankOptions = [ALL_OPTION, ...banks];
+  const supplierOptions = [ALL_OPTION, ...suppliers];
+
+  // Populate the bank/supplier pickers once. Non-fatal on failure — the user
+  // can still filter by date/amount and the selects just show only "All".
+  useEffect(() => {
+    (async () => {
+      try {
+        const [bankData, supplierData] = await Promise.all([
+          getIraqiBanks({page: 1, limit: 200}),
+          getSuppliers({page: 1, limit: 200, search: ''}),
+        ]);
+        setBanks(bankData?.banks || []);
+        setSuppliers(supplierData?.suppliers || []);
+      } catch (err) {
+        // ignore — filters remain usable without the lists
+      }
+    })();
+  }, []);
 
   // Collapse is a discrete two-state transition (collapseAnim: 0 expanded,
   // 1 collapsed) driven by crossing a scroll threshold, not a continuous
@@ -107,13 +178,32 @@ const HomeScreen = () => {
         // other flow) — passing the explicit "All" sentinel is the only way
         // to reliably get the unfiltered list, confirmed against the real
         // backend controller.
-        const params = {page: targetPage, limit: PAGE_LIMIT, supplierId: 'All'};
+        const f = appliedFiltersRef.current;
+        const params = {
+          page: targetPage,
+          limit: PAGE_LIMIT,
+          supplierId: f.supplierId || 'All',
+        };
         if (session?.organization?.subCompanyId) {
           params.subCompanyId = session.organization.subCompanyId;
         }
         if (query) {
           params.type = 'invoiceNumber';
           params.query = query;
+        }
+        // Independent, combinable filters — the backend stacks these on top of
+        // the invoice-number search above (see getMultiContainersInvoices).
+        if (f.bankId && f.bankId !== 'All') {
+          params.bankId = f.bankId;
+        }
+        if (f.startDate) {
+          params.startDate = f.startDate;
+        }
+        if (f.endDate) {
+          params.endDate = f.endDate;
+        }
+        if (f.amount) {
+          params.amount = f.amount;
         }
 
         const data = await getMultiContainerInvoices(params);
@@ -170,6 +260,43 @@ const HomeScreen = () => {
     setIsLoading(false);
   };
 
+  const applyFilters = async () => {
+    const next = {
+      bankId: filterBank?.id ?? 'All',
+      supplierId: filterSupplier?.id ?? 'All',
+      startDate: filterFromDate,
+      endDate: filterToDate,
+      amount: filterAmount.trim(),
+    };
+    setAppliedFilters(next);
+    appliedFiltersRef.current = next; // apply immediately for the fetch below
+    setFiltersVisible(false);
+    setIsLoading(true);
+    await fetchInvoices({targetPage: 1, query: search});
+    setIsLoading(false);
+  };
+
+  const resetFilters = async () => {
+    setFilterBank(ALL_OPTION);
+    setFilterSupplier(ALL_OPTION);
+    setFilterFromDate(null);
+    setFilterToDate(null);
+    setFilterAmount('');
+    const cleared = {
+      bankId: 'All',
+      supplierId: 'All',
+      startDate: null,
+      endDate: null,
+      amount: '',
+    };
+    setAppliedFilters(cleared);
+    appliedFiltersRef.current = cleared;
+    setFiltersVisible(false);
+    setIsLoading(true);
+    await fetchInvoices({targetPage: 1, query: search});
+    setIsLoading(false);
+  };
+
   const handleRefresh = async () => {
     setIsRefreshing(true);
     await fetchInvoices({targetPage: 1, query: search});
@@ -207,7 +334,7 @@ const HomeScreen = () => {
       </View>
 
       <View style={[styles.txCardRight, isRTL && {alignItems: 'flex-start'}]}>
-        <Text style={[styles.txAmount, af(styles.txAmount)]}>{item.amount}</Text>
+        <Text style={[styles.txAmount, af(styles.txAmount)]}>{formatAmount(item.amount)}</Text>
         <StatusBadge status={item.generalBadgeStatus} />
         <Text style={styles.txChevron}>{isRTL ? '‹' : '›'}</Text>
       </View>
@@ -260,13 +387,25 @@ const HomeScreen = () => {
         </Animated.View>
       </Animated.View>
 
-      <SearchInput
-        style={styles.searchWrap}
-        placeholder={t('searchPlaceholder')}
-        value={search}
-        onChangeText={setSearch}
-        onSubmitEditing={handleSearchSubmit}
-      />
+      <View style={[styles.searchRow, {flexDirection: isRTL ? 'row-reverse' : 'row'}]}>
+        <SearchInput
+          style={styles.searchInputFlex}
+          placeholder={t('searchPlaceholder')}
+          value={search}
+          onChangeText={setSearch}
+          onSubmitEditing={handleSearchSubmit}
+        />
+        <TouchableOpacity
+          style={[styles.filterBtn, hasActiveFilters && styles.filterBtnActive]}
+          activeOpacity={0.8}
+          onPress={() => setFiltersVisible(true)}>
+          <SlidersHorizontal
+            size={20}
+            color={hasActiveFilters ? COLORS.primary : COLORS.textMuted}
+          />
+          {hasActiveFilters ? <View style={styles.filterDot} /> : null}
+        </TouchableOpacity>
+      </View>
 
       <View style={[styles.sectionRow, {flexDirection: isRTL ? 'row-reverse' : 'row'}]}>
         <Text style={[styles.sectionTitle, af(styles.sectionTitle)]}>{t('recentTransactions')}</Text>
@@ -299,6 +438,70 @@ const HomeScreen = () => {
           ListEmptyComponent={!isLoading ? <ListEmptyState /> : null}
         />
       )}
+
+      <ModalSheet
+        visible={filtersVisible}
+        onClose={() => setFiltersVisible(false)}
+        title={t('filtersTitle')}
+        sheetStyle={styles.filterSheet}>
+        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <SelectField
+            label={t('filterBankLabel')}
+            value={filterBank}
+            placeholder={t('filterAllOption')}
+            options={bankOptions}
+            onSelect={setFilterBank}
+            getLabel={optionLabel}
+            getKey={item => String(item.id)}
+          />
+          <SelectField
+            label={t('filterSupplierLabel')}
+            value={filterSupplier}
+            placeholder={t('filterAllOption')}
+            options={supplierOptions}
+            onSelect={setFilterSupplier}
+            getLabel={optionLabel}
+            getKey={item => String(item.id)}
+          />
+
+          <View style={[styles.dateRow, {flexDirection: isRTL ? 'row-reverse' : 'row'}]}>
+            <DatePickerField
+              label={t('filterFromDateLabel')}
+              value={filterFromDate}
+              onChange={setFilterFromDate}
+              placeholder={t('datePlaceholder')}
+            />
+            <DatePickerField
+              label={t('filterToDateLabel')}
+              value={filterToDate}
+              onChange={setFilterToDate}
+              placeholder={t('datePlaceholder')}
+            />
+          </View>
+
+          <FormField
+            label={t('filterAmountLabel')}
+            value={filterAmount}
+            onChangeText={setFilterAmount}
+            placeholder={t('filterAmountPlaceholder')}
+            keyboardType="numeric"
+          />
+
+          <View style={[styles.filterActions, {flexDirection: isRTL ? 'row-reverse' : 'row'}]}>
+            <PrimaryButton
+              title={t('resetFilters')}
+              variant="secondary"
+              onPress={resetFilters}
+              style={styles.filterActionBtn}
+            />
+            <PrimaryButton
+              title={t('applyFilters')}
+              onPress={applyFilters}
+              style={styles.filterActionBtn}
+            />
+          </View>
+        </ScrollView>
+      </ModalSheet>
     </SafeAreaView>
   );
 };
@@ -356,7 +559,32 @@ const styles = StyleSheet.create({
   balanceAmount: {color: '#fff', fontWeight: '800', marginTop: 4, includeFontPadding: false},
   balanceRow: {marginTop: 8},
   balanceHint: {color: 'rgba(255,255,255,0.7)', fontSize: 12, includeFontPadding: false},
-  searchWrap: {marginHorizontal: 20, marginBottom: 12},
+  searchRow: {marginHorizontal: 20, marginBottom: 12, alignItems: 'center', gap: 10},
+  searchInputFlex: {flex: 1},
+  filterBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 12,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterBtnActive: {borderColor: COLORS.primary, backgroundColor: COLORS.surfaceAlt},
+  filterDot: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.primary,
+  },
+  filterSheet: {padding: 18, maxWidth: 380, maxHeight: '85%'},
+  dateRow: {gap: 12},
+  filterActions: {gap: 12, marginTop: 6},
+  filterActionBtn: {flex: 1},
   sectionRow: {
     justifyContent: 'space-between',
     alignItems: 'center',
