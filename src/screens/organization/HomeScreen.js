@@ -33,6 +33,7 @@ import PrimaryButton from '../../components/PrimaryButton';
 import {getMultiContainerInvoices} from '../../services/invoices/multiContainerWithoutC';
 import {getIraqiBanks} from '../../services/banks';
 import {getSuppliers} from '../../services/suppliers';
+import {getFilteredSubCompanies} from '../../services/subCompanies';
 import {formatAmount} from '../../utils/format';
 import useUnreadNotifications from '../../utils/useUnreadNotifications';
 
@@ -87,11 +88,13 @@ const HomeScreen = () => {
   const [filtersVisible, setFiltersVisible] = useState(false);
   const [filterBank, setFilterBank] = useState(ALL_OPTION);
   const [filterSupplier, setFilterSupplier] = useState(ALL_OPTION);
+  const [filterSubCompany, setFilterSubCompany] = useState(ALL_OPTION);
   const [filterFromDate, setFilterFromDate] = useState(null);
   const [filterToDate, setFilterToDate] = useState(null);
   const [filterAmount, setFilterAmount] = useState('');
   const [banks, setBanks] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const [subCompanies, setSubCompanies] = useState([]);
 
   // Applied snapshot that fetchInvoices actually sends. Mirrored into a ref
   // so the focus/debounce effects (which close over an older render) always
@@ -99,6 +102,7 @@ const HomeScreen = () => {
   const [appliedFilters, setAppliedFilters] = useState({
     bankId: 'All',
     supplierId: 'All',
+    subCompanyId: 'All',
     startDate: null,
     endDate: null,
     amount: '',
@@ -111,6 +115,7 @@ const HomeScreen = () => {
   const hasActiveFilters =
     appliedFilters.bankId !== 'All' ||
     appliedFilters.supplierId !== 'All' ||
+    appliedFilters.subCompanyId !== 'All' ||
     !!appliedFilters.startDate ||
     !!appliedFilters.endDate ||
     !!appliedFilters.amount;
@@ -118,18 +123,21 @@ const HomeScreen = () => {
   const optionLabel = item => (item?.id === 'All' ? t('filterAllOption') : item?.name);
   const bankOptions = [ALL_OPTION, ...banks];
   const supplierOptions = [ALL_OPTION, ...suppliers];
+  const subCompanyOptions = [ALL_OPTION, ...subCompanies];
 
   // Populate the bank/supplier pickers once. Non-fatal on failure — the user
   // can still filter by date/amount and the selects just show only "All".
   useEffect(() => {
     (async () => {
       try {
-        const [bankData, supplierData] = await Promise.all([
+        const [bankData, supplierData, subCompanyData] = await Promise.all([
           getIraqiBanks({page: 1, limit: 200}),
           getSuppliers({page: 1, limit: 200, search: ''}),
+          getFilteredSubCompanies({page: 1, limit: 200, search: ''}),
         ]);
         setBanks(bankData?.banks || []);
         setSuppliers(supplierData?.suppliers || []);
+        setSubCompanies(subCompanyData?.subCompanies || []);
       } catch (err) {
         // ignore — filters remain usable without the lists
       }
@@ -186,8 +194,11 @@ const HomeScreen = () => {
           limit: PAGE_LIMIT,
           supplierId: f.supplierId || 'All',
         };
-        if (session?.organization?.subCompanyId) {
-          params.subCompanyId = session.organization.subCompanyId;
+        // Omitted (not "All") when no sub-company is picked: the backend
+        // then doesn't filter by sub-company and returns every company's
+        // invoices, instead of only the session's current sub-company.
+        if (f.subCompanyId && f.subCompanyId !== 'All') {
+          params.subCompanyId = f.subCompanyId;
         }
         if (query) {
           params.type = 'invoiceNumber';
@@ -218,7 +229,7 @@ const HomeScreen = () => {
         setError(t('genericErrorMessage'));
       }
     },
-    [session?.organization?.subCompanyId, t],
+    [t],
   );
 
   useEffect(() => {
@@ -266,6 +277,7 @@ const HomeScreen = () => {
     const next = {
       bankId: filterBank?.id ?? 'All',
       supplierId: filterSupplier?.id ?? 'All',
+      subCompanyId: filterSubCompany?.id ?? 'All',
       startDate: filterFromDate,
       endDate: filterToDate,
       amount: filterAmount.trim(),
@@ -281,12 +293,14 @@ const HomeScreen = () => {
   const resetFilters = async () => {
     setFilterBank(ALL_OPTION);
     setFilterSupplier(ALL_OPTION);
+    setFilterSubCompany(ALL_OPTION);
     setFilterFromDate(null);
     setFilterToDate(null);
     setFilterAmount('');
     const cleared = {
       bankId: 'All',
       supplierId: 'All',
+      subCompanyId: 'All',
       startDate: null,
       endDate: null,
       amount: '',
@@ -471,6 +485,15 @@ const HomeScreen = () => {
             options={bankOptions}
             onSelect={setFilterBank}
             getLabel={optionLabel}
+            getKey={item => String(item.id)}
+          />
+          <SelectField
+            label={t('filterSubCompanyLabel')}
+            value={filterSubCompany}
+            placeholder={t('filterAllOption')}
+            options={subCompanyOptions}
+            onSelect={setFilterSubCompany}
+            getLabel={item => (item?.id === 'All' ? t('filterAllOption') : item?.name || item?.nameInAr)}
             getKey={item => String(item.id)}
           />
           <SelectField

@@ -20,6 +20,7 @@
   "filtersTitle": "عوامل التصفية",
   "filterBankLabel": "المصرف العراقي",
   "filterSupplierLabel": "المورّد",
+  "filterSubCompanyLabel": "الشركة الفرعية",
   "filterFromDateLabel": "من تاريخ",
   "filterToDateLabel": "إلى تاريخ",
   "filterAmountLabel": "مبلغ الحوالة",
