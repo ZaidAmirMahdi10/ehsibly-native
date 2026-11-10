@@ -6,7 +6,7 @@ import {useNavigation, useRoute} from '@react-navigation/native';
 import FormField from '../../components/FormField';
 import PrimaryButton from '../../components/PrimaryButton';
 import ErrorState from '../../components/ErrorState';
-import {createSubCompany} from '../../services/subCompanies';
+import {createSubCompany, updateSubCompany} from '../../services/subCompanies';
 import {useAuth} from '../../context/AuthContext';
 import {COLORS} from '../../constants/theme';
 
@@ -14,16 +14,18 @@ const AddSubCompanyScreen = () => {
   const {t} = useTranslation();
   const navigation = useNavigation();
   const route = useRoute();
-  const {onCreated} = route.params || {};
+  // editItem/onSaved → edit an existing sub-company; onCreated → add a new one.
+  const {onCreated, editItem, onSaved} = route.params || {};
+  const isEdit = !!editItem;
   const {session} = useAuth();
 
-  const [companyName, setCompanyName] = useState('');
-  const [nameInAr, setNameInAr] = useState('');
-  const [address, setAddress] = useState('');
-  const [country, setCountry] = useState('Iraq');
-  const [city, setCity] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [email, setEmail] = useState('');
+  const [companyName, setCompanyName] = useState(editItem?.name || '');
+  const [nameInAr, setNameInAr] = useState(editItem?.nameInAr || '');
+  const [address, setAddress] = useState(editItem?.address || '');
+  const [country, setCountry] = useState(editItem?.country || 'Iraq');
+  const [city, setCity] = useState(editItem?.city || '');
+  const [phoneNumber, setPhoneNumber] = useState(editItem?.phoneNumber || '');
+  const [email, setEmail] = useState(editItem?.email || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
@@ -35,7 +37,7 @@ const AddSubCompanyScreen = () => {
     setError(null);
     setIsSubmitting(true);
     try {
-      const data = await createSubCompany({
+      const payload = {
         companyName: companyName.trim(),
         nameInAr: nameInAr.trim() || undefined,
         address: address.trim() || undefined,
@@ -43,9 +45,17 @@ const AddSubCompanyScreen = () => {
         city: city.trim() || undefined,
         phoneNumber: phoneNumber.trim() || undefined,
         email: email.trim() || undefined,
-        organizationId: session?.organization?.id,
-      });
-      onCreated?.(data.subCompany);
+      };
+      if (isEdit) {
+        await updateSubCompany(editItem.id, payload);
+        onSaved?.();
+      } else {
+        const data = await createSubCompany({
+          ...payload,
+          organizationId: session?.organization?.id,
+        });
+        onCreated?.(data.subCompany);
+      }
       navigation.goBack();
     } catch (err) {
       setError(err?.response?.data?.message || err?.response?.data?.error || t('genericErrorMessage'));
@@ -64,7 +74,11 @@ const AddSubCompanyScreen = () => {
       <FormField label={t('cityLabel')} value={city} onChangeText={setCity} />
       <FormField label={t('phoneLabel')} value={phoneNumber} onChangeText={setPhoneNumber} keyboardType="phone-pad" />
       <FormField label={t('emailLabel')} value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
-      <PrimaryButton title={t('saveSubCompanyAction')} onPress={handleSubmit} loading={isSubmitting} />
+      <PrimaryButton
+        title={isEdit ? t('saveChangesAction') : t('saveSubCompanyAction')}
+        onPress={handleSubmit}
+        loading={isSubmitting}
+      />
     </ScrollView>
   );
 };

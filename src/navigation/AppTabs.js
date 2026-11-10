@@ -3,13 +3,14 @@ import {Image} from 'react-native';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useTranslation} from 'react-i18next';
-import {FileText, ChartBar} from 'lucide-react-native';
+import {FileText, ChartBar, Building2} from 'lucide-react-native';
 
 import {LanguageContext} from '../../App';
 import {useAuth} from '../context/AuthContext';
 import CustomText from '../components/CustomText';
 
 import HomeScreen from '../screens/organization/HomeScreen';
+import ManagementScreen from '../screens/organization/ManagementScreen';
 import BankHomeScreen from '../screens/bank/BankHomeScreen';
 import BankReportsScreen from '../screens/bank/BankReportsScreen';
 import ProfileScreen from '../screens/general/ProfileScreen';
@@ -110,6 +111,17 @@ export default function AppTabs() {
           }}
         />
       )}
+
+      {!isBankOrg ? (
+        <Tab.Screen
+          name={t('managementTab')}
+          component={ManagementScreen}
+          options={{
+            tabBarLabel: renderLabel(t('managementTab')),
+            tabBarIcon: ({color}) => <Building2 size={25} color={color} />,
+          }}
+        />
+      ) : null}
 
       <Tab.Screen
         name={t('profile')}

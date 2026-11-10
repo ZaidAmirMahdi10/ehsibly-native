@@ -89,7 +89,12 @@ apiClient.interceptors.request.use(config => {
 apiClient.interceptors.response.use(
   response => response,
   error => {
-    if (error.response?.status === 401) {
+    // Device-token register/remove is best-effort background work — a 401 there
+    // (e.g. a transient race right after login) must NOT trigger the global
+    // logout, or it would kick the user straight back to the login screen.
+    const url = error.config?.url || '';
+    const isDeviceToken = url.includes('/deviceToken');
+    if (error.response?.status === 401 && !isDeviceToken) {
       clearApiSession();
       onUnauthorized?.();
     }

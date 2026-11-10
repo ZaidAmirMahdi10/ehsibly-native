@@ -10,6 +10,8 @@ import './i18n';
 import {useTranslation} from 'react-i18next';
 import {AuthProvider} from './src/context/AuthContext';
 import {AlertProvider} from './src/context/AlertContext';
+import {navigationRef, flushPendingNavigation} from './src/navigation/navigationRef';
+import {setupNotificationHandlers} from './src/services/push';
 
 export const LanguageContext = createContext();
 export default function App() {
@@ -40,6 +42,13 @@ export default function App() {
     };
     loadLanguage();
   }, [i18n]);
+
+  // Foreground message display + notification-tap navigation. Registered once;
+  // token registration itself is handled in AuthContext (auth-gated).
+  useEffect(() => {
+    const unsubscribe = setupNotificationHandlers();
+    return unsubscribe;
+  }, []);
 
   const changeLanguage = async language => {
     try {
@@ -74,7 +83,9 @@ export default function App() {
           changeDirection,
         }}>
         <AlertProvider>
-          <NavigationContainer>
+          <NavigationContainer
+            ref={navigationRef}
+            onReady={flushPendingNavigation}>
             <SafeAreaProvider style={{flex: 1}}>
               <RootNavigator />
             </SafeAreaProvider>

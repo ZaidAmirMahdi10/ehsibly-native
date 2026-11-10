@@ -846,35 +846,88 @@ const BankHomeScreen = () => {
           params.paymentsStatus = paymentsStatus;
         }
 
-        const data = await getBankApplications({...params, signal: controller.signal});
-        let mapped = (data?.invoices || []).map(mapInvoice);
-        // "In progress" has no server-side bucket — filter this page
-        // client-side against the same categorization the badge itself uses.
-        if (filter === 'inProgress') {
-          mapped = mapped.filter(app => app.category === 'inProgress');
-        }
-        // Safety net over a backend gap in includeCompleted/includeRejected:
-        // its exclusion conditions only match a rejection/completion PAIRED
-        // with an invoice-level ACCEPTED/REJECTED status, so e.g. a payment
-        // rejected while the invoice is still NOT_STARTED sails through
-        // includeRejected=false (verified live: invoice 24000000008). Drop
-        // anything whose derived badge contradicts an applied hide switch so
-        // the list never shows a badge the user explicitly hid. Skipped when
-        // a status chip is active, matching the backend's own
-        // userIsFilteringByStatus bypass (an explicit chip wins over hides).
-        // Same page-thinning caveat as the inProgress filter above.
-        if (!FILTER_TO_PAYMENTS_STATUS[filter]) {
-          if (!advancedFilters.includeCompleted) {
-            mapped = mapped.filter(app => app.category !== 'completed');
+        // Client-side category thinning applied to one page of invoices.
+        const applyClientFilters = invoices => {
+          let mapped = invoices.map(mapInvoice);
+          // "In progress" has no server-side bucket — keep only that category.
+          if (filter === 'inProgress') {
+            mapped = mapped.filter(app => app.category === 'inProgress');
           }
-          if (!advancedFilters.includeRejected) {
-            mapped = mapped.filter(app => app.category !== 'rejected');
+          // "On Hold" (unstartedPayments) only checks whether the maker/auditor
+          // step is NOT_STARTED, so the server bucket still includes apps a
+          // higher authority (auditor/executor) already rejected or completed.
+          // Drop those so "On Hold" means genuinely still waiting, matching the
+          // card badge.
+          if (filter === 'awaiting') {
+            mapped = mapped.filter(
+              app => app.category !== 'completed' && app.category !== 'rejected',
+            );
           }
+          // Safety net over a backend gap in includeCompleted/includeRejected:
+          // its exclusion conditions only match a rejection/completion PAIRED
+          // with an invoice-level ACCEPTED/REJECTED status, so e.g. a payment
+          // rejected while the invoice is still NOT_STARTED sails through
+          // includeRejected=false (verified live: invoice 24000000008). Drop
+          // anything whose derived badge contradicts an applied hide switch so
+          // the list never shows a badge the user explicitly hid. Skipped when
+          // a status chip is active, matching the backend's own
+          // userIsFilteringByStatus bypass (an explicit chip wins over hides).
+          if (!FILTER_TO_PAYMENTS_STATUS[filter]) {
+            if (!advancedFilters.includeCompleted) {
+              mapped = mapped.filter(app => app.category !== 'completed');
+            }
+            if (!advancedFilters.includeRejected) {
+              mapped = mapped.filter(app => app.category !== 'rejected');
+            }
+          }
+          return mapped;
+        };
+
+        // inProgress and awaiting both thin the page client-side, which can
+        // leave a page looking empty/short even when matches exist deeper — so
+        // the count chip ends up contradicting an empty list. Accumulate across
+        // pages until a screenful is collected, the pages run out, or a batch
+        // cap is hit, so the list fills instead of looking empty. Other filters
+        // keep the simple single-page fetch.
+        const isClientThinned = filter === 'inProgress' || filter === 'awaiting';
+        let collected = [];
+        let lastPage = targetPage;
+        let totalPagesResp = 1;
+
+        if (isClientThinned) {
+          const MAX_BATCH_PAGES = 10;
+          let cursor = targetPage;
+          let batchPages = 0;
+          // eslint-disable-next-line no-constant-condition
+          while (true) {
+            const pageData = await getBankApplications({
+              ...params,
+              page: cursor,
+              signal: controller.signal,
+            });
+            totalPagesResp = pageData?.totalPages || 1;
+            collected.push(...applyClientFilters(pageData?.invoices || []));
+            batchPages += 1;
+            lastPage = cursor;
+            if (
+              collected.length >= PAGE_LIMIT ||
+              cursor >= totalPagesResp ||
+              batchPages >= MAX_BATCH_PAGES
+            ) {
+              break;
+            }
+            cursor += 1;
+          }
+        } else {
+          const pageData = await getBankApplications({...params, signal: controller.signal});
+          totalPagesResp = pageData?.totalPages || 1;
+          collected = applyClientFilters(pageData?.invoices || []);
+          lastPage = targetPage;
         }
 
-        setApplications(prev => (append ? [...prev, ...mapped] : mapped));
-        setTotalPages(data?.totalPages || 1);
-        setPage(targetPage);
+        setApplications(prev => (append ? [...prev, ...collected] : collected));
+        setTotalPages(totalPagesResp);
+        setPage(lastPage);
       } catch (err) {
         if (controller.signal.aborted) {
           return;

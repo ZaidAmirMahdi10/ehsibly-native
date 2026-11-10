@@ -46,6 +46,8 @@ import {
   paymentDocTypesForBank,
 } from '../../constants/documentTypes';
 import {COLORS, makeShadow} from '../../constants/theme';
+import {formatAmount} from '../../utils/format';
+import {ChevronLeft, ChevronRight} from 'lucide-react-native';
 
 const TABS = {
   DOCUMENTS: 'documents',
@@ -451,9 +453,11 @@ const InvoiceDetailScreen = () => {
 
       <View style={[styles.detailHeader, rowDirection, {paddingTop: DETAIL_HEADER_BASE_PADDING_TOP + insets.top}]}>
         <TouchableOpacity style={styles.backBtn} onPress={navigation.goBack} activeOpacity={0.7}>
-          <CustomText style={styles.backIcon} paddingTop={0}>
-            {isRTL ? '›' : '‹'}
-          </CustomText>
+          {isRTL ? (
+            <ChevronRight size={24} color="#fff" strokeWidth={2.5} />
+          ) : (
+            <ChevronLeft size={24} color="#fff" strokeWidth={2.5} />
+          )}
         </TouchableOpacity>
         <View style={styles.detailHeaderText}>
           <CustomText style={styles.detailHeaderSub} paddingTop={0}>
@@ -484,7 +488,7 @@ const InvoiceDetailScreen = () => {
               {t('amount')}
             </CustomText>
             <CustomText bold style={[styles.summaryValue, styles.summaryAmount]} numberOfLines={1}>
-              {invoice.amount || `${invoice.amountForSupplier} ${invoice.currency || ''}`}
+              {formatAmount(invoice.amount || `${invoice.amountForSupplier} ${invoice.currency || ''}`)}
             </CustomText>
           </View>
           <View style={styles.summaryItem}>
@@ -711,7 +715,7 @@ const InvoiceDetailScreen = () => {
             items={[
               {
                 label: t('paymentAmount'),
-                value: `${paymentDetail.amount} ${paymentDetail.currency}`,
+                value: `${formatAmount(paymentDetail.amount)} ${paymentDetail.currency}`,
               },
               {
                 label: t('paymentStatus'),
@@ -821,7 +825,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  backIcon: {color: '#fff', fontSize: 24, lineHeight: 28, fontWeight: '300'},
   detailHeaderText: {flex: 1},
   detailHeaderSub: {
     color: COLORS.accent,

@@ -2,10 +2,15 @@ import UIKit
 import React
 import React_RCTAppDelegate
 import ReactAppDependencyProvider
+import FirebaseCore
 
 @main
 class AppDelegate: RCTAppDelegate {
   override func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+    // Initialize Firebase (reads ios/Ehsibly/GoogleService-Info.plist). Must run
+    // before React Native so @react-native-firebase can register for push.
+    FirebaseApp.configure()
+
     self.moduleName = "Ehsibly"
     self.dependencyProvider = RCTAppDependencyProvider()
 
