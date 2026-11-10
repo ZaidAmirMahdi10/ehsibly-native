@@ -2,7 +2,7 @@ import {createContext, useContext, useEffect, useState, useCallback} from 'react
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as authService from '../services/auth';
 import {setApiSession, clearApiSession, registerUnauthorizedHandler} from '../services/apiClient';
-import {registerForPush, unregisterPush} from '../services/pushNotifications';
+import {registerForPush, unregisterForPush} from '../services/push';
 
 const SESSION_KEY = 'ehsibly_session';
 
@@ -75,7 +75,10 @@ export const AuthProvider = ({children}) => {
   const [isLoading, setIsLoading] = useState(true);
 
   const logout = useCallback(async () => {
-    await unregisterPush();
+    // Remove this device's push token while the auth header is still valid
+    // (best-effort; no-op on a 401-triggered logout where the session is
+    // already cleared).
+    await unregisterForPush();
     await AsyncStorage.removeItem(SESSION_KEY);
     clearApiSession();
     setSession(null);
@@ -93,6 +96,8 @@ export const AuthProvider = ({children}) => {
           const parsed = JSON.parse(stored);
           setApiSession(parsed);
           setSession(parsed);
+          // Re-register the device token for a returning session (it may have
+          // rotated since last launch).
           registerForPush();
         }
       } catch (error) {
@@ -115,6 +120,8 @@ export const AuthProvider = ({children}) => {
     await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(normalized));
     setApiSession(normalized);
     setSession(normalized);
+    // Prompt for notifications and register this device for the org (detached
+    // so it never delays the login flow).
     registerForPush();
     return normalized;
   }, []);

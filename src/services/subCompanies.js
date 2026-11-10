@@ -10,3 +10,9 @@ export const createSubCompany = async payload => {
   const response = await apiClient.post('/api/subCompany', payload);
   return response.data;
 };
+
+// PUT /api/subCompany/:id — updates a sub-company's own fields.
+export const updateSubCompany = async (id, payload) => {
+  const response = await apiClient.put(`/api/subCompany/${id}`, payload);
+  return response.data;
+};

@@ -7,10 +7,9 @@ import FirebaseCore
 @main
 class AppDelegate: RCTAppDelegate {
   override func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
-    // Push notifications: only configured once GoogleService-Info.plist is added
-    if Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") != nil {
-      FirebaseApp.configure()
-    }
+    // Initialize Firebase (reads ios/Ehsibly/GoogleService-Info.plist). Must run
+    // before React Native so @react-native-firebase can register for push.
+    FirebaseApp.configure()
 
     self.moduleName = "Ehsibly"
     self.dependencyProvider = RCTAppDependencyProvider()

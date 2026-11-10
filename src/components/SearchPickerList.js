@@ -55,19 +55,29 @@ const SearchPickerList = ({
           contentContainerStyle={styles.listContent}
           ItemSeparatorComponent={() => <View style={{height: 8}} />}
           ListEmptyComponent={<ListEmptyState titleKey="noResultsFound" subtitleKey="tryDifferentSearch" />}
-          renderItem={({item}) => (
-            <TouchableOpacity
-              style={styles.row}
-              activeOpacity={0.75}
-              onPress={() => onSelectItem(item)}>
-              <CustomText style={styles.rowLabel} paddingTop={0}>
-                {renderItemLabel(item)}
-              </CustomText>
-              <CustomText style={styles.chevron} paddingTop={0}>
-                ›
-              </CustomText>
-            </TouchableOpacity>
-          )}
+          renderItem={({item}) =>
+            // Without onSelectItem the list is view-only: plain, non-tappable
+            // rows with no chevron (e.g. Iraqi banks, which merchants can't edit).
+            onSelectItem ? (
+              <TouchableOpacity
+                style={styles.row}
+                activeOpacity={0.75}
+                onPress={() => onSelectItem(item)}>
+                <CustomText style={styles.rowLabel} paddingTop={0}>
+                  {renderItemLabel(item)}
+                </CustomText>
+                <CustomText style={styles.chevron} paddingTop={0}>
+                  ›
+                </CustomText>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.row}>
+                <CustomText style={styles.rowLabel} paddingTop={0}>
+                  {renderItemLabel(item)}
+                </CustomText>
+              </View>
+            )
+          }
         />
       )}
     </View>

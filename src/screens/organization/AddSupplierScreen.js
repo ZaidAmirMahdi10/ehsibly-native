@@ -7,7 +7,7 @@ import CustomText from '../../components/CustomText';
 import FormField from '../../components/FormField';
 import PrimaryButton from '../../components/PrimaryButton';
 import ErrorState from '../../components/ErrorState';
-import {createSupplier} from '../../services/suppliers';
+import {createSupplier, updateSupplier} from '../../services/suppliers';
 import {useAuth} from '../../context/AuthContext';
 import {COLORS} from '../../constants/theme';
 
@@ -15,16 +15,19 @@ const AddSupplierScreen = () => {
   const {t} = useTranslation();
   const navigation = useNavigation();
   const route = useRoute();
-  const {onCreated} = route.params || {};
+  // editItem/onSaved → edit; onCreated → add. Editing covers the supplier's own
+  // fields; bank accounts are managed separately, so that section is add-only.
+  const {onCreated, editItem, onSaved} = route.params || {};
+  const isEdit = !!editItem;
   const {session} = useAuth();
 
-  const [supplierName, setSupplierName] = useState('');
-  const [supplierCompany, setSupplierCompany] = useState('');
-  const [supplierCountry, setSupplierCountry] = useState('China');
-  const [supplierCity, setSupplierCity] = useState('');
-  const [supplierAddress, setSupplierAddress] = useState('');
-  const [supplierPhoneNumber, setSupplierPhoneNumber] = useState('');
-  const [supplierEmail, setSupplierEmail] = useState('');
+  const [supplierName, setSupplierName] = useState(editItem?.name || '');
+  const [supplierCompany, setSupplierCompany] = useState(editItem?.company || '');
+  const [supplierCountry, setSupplierCountry] = useState(editItem?.country || 'China');
+  const [supplierCity, setSupplierCity] = useState(editItem?.city || '');
+  const [supplierAddress, setSupplierAddress] = useState(editItem?.address || '');
+  const [supplierPhoneNumber, setSupplierPhoneNumber] = useState(editItem?.phoneNumber || '');
+  const [supplierEmail, setSupplierEmail] = useState(editItem?.email || '');
 
   const [selectedBank, setSelectedBank] = useState(null);
   const [accountNumber, setAccountNumber] = useState('');
@@ -41,6 +44,23 @@ const AddSupplierScreen = () => {
     setError(null);
     setIsSubmitting(true);
     try {
+      const supplierFields = {
+        supplierName: supplierName.trim(),
+        supplierCompany: supplierCompany.trim() || undefined,
+        supplierCountry: supplierCountry.trim() || undefined,
+        supplierCity: supplierCity.trim() || undefined,
+        supplierAddress: supplierAddress.trim() || undefined,
+        supplierPhoneNumber: supplierPhoneNumber.trim() || undefined,
+        supplierEmail: supplierEmail.trim() || undefined,
+      };
+
+      if (isEdit) {
+        await updateSupplier(editItem.id, supplierFields);
+        onSaved?.();
+        navigation.goBack();
+        return;
+      }
+
       const bankAccounts =
         selectedBank && accountNumber.trim() && accountCurrency.trim()
           ? [
@@ -54,13 +74,7 @@ const AddSupplierScreen = () => {
           : undefined;
 
       const data = await createSupplier({
-        supplierName: supplierName.trim(),
-        supplierCompany: supplierCompany.trim() || undefined,
-        supplierCountry: supplierCountry.trim() || undefined,
-        supplierCity: supplierCity.trim() || undefined,
-        supplierAddress: supplierAddress.trim() || undefined,
-        supplierPhoneNumber: supplierPhoneNumber.trim() || undefined,
-        supplierEmail: supplierEmail.trim() || undefined,
+        ...supplierFields,
         organizationId: session?.organization?.id,
         userId: session?.userId,
         bankAccounts,
@@ -86,37 +100,46 @@ const AddSupplierScreen = () => {
       <FormField label={t('phoneLabel')} value={supplierPhoneNumber} onChangeText={setSupplierPhoneNumber} keyboardType="phone-pad" />
       <FormField label={t('emailLabel')} value={supplierEmail} onChangeText={setSupplierEmail} autoCapitalize="none" keyboardType="email-address" />
 
-      <CustomText bold style={styles.sectionTitle}>
-        {t('supplierBankAccountSectionTitle')}
-      </CustomText>
-      <CustomText style={styles.sectionHint}>{t('supplierBankAccountHint')}</CustomText>
-
-      <View style={styles.group}>
-        <CustomText style={styles.label}>{t('bankLabel')}</CustomText>
-        <TouchableOpacity
-          style={styles.pickerBtn}
-          onPress={() =>
-            navigation.navigate('BankPicker', {onSelect: setSelectedBank})
-          }>
-          <CustomText style={styles.pickerBtnText} paddingTop={0}>
-            {selectedBank ? selectedBank.bank.name : t('chooseBankPlaceholder')}
+      {!isEdit ? (
+        <>
+          <CustomText bold style={styles.sectionTitle}>
+            {t('supplierBankAccountSectionTitle')}
           </CustomText>
-        </TouchableOpacity>
-      </View>
+          <CustomText style={styles.sectionHint}>{t('supplierBankAccountHint')}</CustomText>
 
-      <FormField
-        label={t('accountNumberLabel')}
-        value={accountNumber}
-        onChangeText={setAccountNumber}
-      />
-      <FormField
-        label={t('currencyLabel')}
-        value={accountCurrency}
-        onChangeText={setAccountCurrency}
-        autoCapitalize="characters"
-      />
+          <View style={styles.group}>
+            <CustomText style={styles.label}>{t('bankLabel')}</CustomText>
+            <TouchableOpacity
+              style={styles.pickerBtn}
+              onPress={() =>
+                navigation.navigate('BankPicker', {onSelect: setSelectedBank})
+              }>
+              <CustomText style={styles.pickerBtnText} paddingTop={0}>
+                {selectedBank ? selectedBank.bank.name : t('chooseBankPlaceholder')}
+              </CustomText>
+            </TouchableOpacity>
+          </View>
 
-      <PrimaryButton title={t('saveSupplierAction')} onPress={handleSubmit} loading={isSubmitting} style={styles.submitBtn} />
+          <FormField
+            label={t('accountNumberLabel')}
+            value={accountNumber}
+            onChangeText={setAccountNumber}
+          />
+          <FormField
+            label={t('currencyLabel')}
+            value={accountCurrency}
+            onChangeText={setAccountCurrency}
+            autoCapitalize="characters"
+          />
+        </>
+      ) : null}
+
+      <PrimaryButton
+        title={isEdit ? t('saveChangesAction') : t('saveSupplierAction')}
+        onPress={handleSubmit}
+        loading={isSubmitting}
+        style={styles.submitBtn}
+      />
     </ScrollView>
   );
 };

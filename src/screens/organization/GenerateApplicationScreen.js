@@ -12,8 +12,10 @@ import ErrorState from '../../components/ErrorState';
 import ErrorBox from '../../components/ErrorBox';
 import StripedCard from '../../components/StripedCard';
 import SelectField from '../../components/SelectField';
+import InfoBox from '../../components/InfoBox';
 import {getCompanyBankAccounts, getSupplierBankAccounts} from '../../services/bankAccounts';
 import {generatePermit} from '../../services/generatePermit';
+import {saveNotesForBank} from '../../services/invoices/multiContainerWithoutC';
 import {useAuth} from '../../context/AuthContext';
 import {COLORS} from '../../constants/theme';
 
@@ -95,6 +97,10 @@ const GenerateApplicationScreen = () => {
 
   const [transferType, setTransferType] = useState('external');
   const [fee, setFee] = useState('beneficiary');
+  // Bank-visible notes (notesForBank) — only relevant, and only shown, once
+  // the chosen Iraqi bank is Bank of Baghdad (isBaghdadBank below). Prefilled
+  // from the invoice in case it was set earlier.
+  const [notesForBank, setNotesForBank] = useState(invoice.notesForBank || '');
   const [toHongKong, setToHongKong] = useState(false);
   const [hasGoodsEnteredTheCountry, setHasGoodsEnteredTheCountry] = useState(false);
   const [isTransactionService, setIsTransactionService] = useState(false);
@@ -187,6 +193,16 @@ const GenerateApplicationScreen = () => {
         refrenceNumber: referenceNumber.trim() || undefined,
         paymentDate: new Date().toISOString(),
       });
+      // Persist bank-visible notes (only meaningful for Bank of Baghdad).
+      // Non-fatal: the application was already generated, so a note failure
+      // shouldn't surface as a hard error / tempt a duplicate submit.
+      if (isBaghdadBank && notesForBank.trim() !== (invoice.notesForBank || '').trim()) {
+        try {
+          await saveNotesForBank(invoice.id, notesForBank.trim());
+        } catch (notesErr) {
+          console.warn('saveNotesForBank failed after generating application', notesErr);
+        }
+      }
       navigation.goBack();
     } catch (err) {
       setError(err?.response?.data?.message || t('genericErrorMessage'));
@@ -317,6 +333,17 @@ const GenerateApplicationScreen = () => {
               <CustomText style={styles.toggleLabel} paddingTop={0}>{label}</CustomText>
             </TouchableOpacity>
           ))}
+
+          <FormField
+            label={t('notesForBankLabel')}
+            value={notesForBank}
+            onChangeText={setNotesForBank}
+            placeholder={t('notesForBankPlaceholder')}
+            multiline
+            numberOfLines={4}
+            style={styles.notesInput}
+          />
+          <InfoBox text={t('notesForBankVisibleNote')} style={styles.infoNote} />
         </>
       ) : null}
 
@@ -369,6 +396,8 @@ const styles = StyleSheet.create({
   checkboxChecked: {backgroundColor: COLORS.primary, borderColor: COLORS.primary},
   checkboxMark: {color: '#fff', fontSize: 12, fontWeight: '700'},
   toggleLabel: {fontSize: 13, color: COLORS.text},
+  notesInput: {minHeight: 100, textAlignVertical: 'top'},
+  infoNote: {marginTop: 8, marginBottom: 14},
   submitBtn: {marginTop: 10},
 });
 

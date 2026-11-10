@@ -14,3 +14,10 @@ export const createSupplier = async payload => {
   const response = await apiClient.post('/createSupplier', payload);
   return response.data;
 };
+
+// PUT /updateSupplier/:id — updates a supplier's own fields (name, company,
+// contact, etc.). Bank accounts are managed separately.
+export const updateSupplier = async (id, payload) => {
+  const response = await apiClient.put(`/updateSupplier/${id}`, payload);
+  return response.data;
+};
