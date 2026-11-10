@@ -19,6 +19,7 @@
   "filtersTitle": "Filters",
   "filterBankLabel": "Iraqi bank",
   "filterSupplierLabel": "Supplier",
+  "filterSubCompanyLabel": "Sub-company",
   "filterFromDateLabel": "From date",
   "filterToDateLabel": "To date",
   "filterAmountLabel": "Transfer amount",
