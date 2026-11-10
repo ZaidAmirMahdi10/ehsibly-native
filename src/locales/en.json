@@ -535,5 +535,14 @@
   "sendToBankAction": "Send to Bank",
   "sendToBankConfirmTitle": "Send to Bank?",
   "sendToBankConfirmMessage": "This submits the application to the bank's review queue. You can't edit it after sending.",
-  "applicationSentNotice": "This application has been sent to the bank."
+  "applicationSentNotice": "This application has been sent to the bank.",
+  "notifications": "Notifications",
+  "notificationsAll": "All",
+  "notificationsUnread": "Unread",
+  "markAllAsRead": "Mark all as read",
+  "noNotifications": "No notifications",
+  "noUnreadNotifications": "No unread notifications",
+  "noNotificationsHint": "Updates about your transactions and subscription will appear here",
+  "failedToLoadNotifications": "Couldn't load notifications",
+  "yesterday": "Yesterday"
 }

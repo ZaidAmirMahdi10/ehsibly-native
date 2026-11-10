@@ -15,7 +15,7 @@ import {
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useTranslation} from 'react-i18next';
 import {useNavigation} from '@react-navigation/native';
-import {SlidersHorizontal} from 'lucide-react-native';
+import {SlidersHorizontal, Bell} from 'lucide-react-native';
 
 import {LanguageContext} from '../../../App';
 import {useAuth} from '../../context/AuthContext';
@@ -34,6 +34,7 @@ import {getMultiContainerInvoices} from '../../services/invoices/multiContainerW
 import {getIraqiBanks} from '../../services/banks';
 import {getSuppliers} from '../../services/suppliers';
 import {formatAmount} from '../../utils/format';
+import useUnreadNotifications from '../../utils/useUnreadNotifications';
 
 // Sentinel "no filter" option shared by the bank and supplier selects — its
 // label is resolved through t() at render so it localizes, and the backend
@@ -50,6 +51,7 @@ const HomeScreen = () => {
   const {session} = useAuth();
   const navigation = useNavigation();
   const isRTL = currentDirection === 'rtl';
+  const {count: unreadNotifications} = useUnreadNotifications();
   // Was a single static {fontFamily: TAJAWAL_REGULAR} applied everywhere —
   // since most of this screen's text styles set their own fontWeight
   // (600/700/800), forcing the Regular file's exact filename alongside a
@@ -357,12 +359,29 @@ const HomeScreen = () => {
             </Text>
           </View>
         </View>
-        <View style={styles.avatarCircle}>
-          <Text style={styles.avatarText}>
-            {(session?.organization?.username || session?.organization?.name || '?')
-              .slice(0, 2)
-              .toUpperCase()}
-          </Text>
+        <View style={[styles.headerActions, {flexDirection: isRTL ? 'row-reverse' : 'row'}]}>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => navigation.navigate('Notifications')}
+            accessibilityRole="button"
+            accessibilityLabel={t('notifications')}
+            style={styles.bellButton}>
+            <Bell size={22} color={COLORS.primaryDark} />
+            {unreadNotifications > 0 && (
+              <View style={styles.bellBadge}>
+                <Text style={styles.bellBadgeText}>
+                  {unreadNotifications > 99 ? '99+' : unreadNotifications}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          <View style={styles.avatarCircle}>
+            <Text style={styles.avatarText}>
+              {(session?.organization?.username || session?.organization?.name || '?')
+                .slice(0, 2)
+                .toUpperCase()}
+            </Text>
+          </View>
         </View>
       </View>
 
@@ -525,6 +544,30 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   listHeaderTitle: {fontSize: 18, fontWeight: '800', color: COLORS.text, maxWidth: 220},
+  headerActions: {alignItems: 'center', gap: 10},
+  bellButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.surface,
+  },
+  bellBadge: {
+    position: 'absolute',
+    top: 0,
+    end: 0,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    backgroundColor: COLORS.danger,
+    borderWidth: 2,
+    borderColor: COLORS.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bellBadgeText: {color: '#fff', fontSize: 10, fontWeight: '700'},
   avatarCircle: {
     width: 42,
     height: 42,

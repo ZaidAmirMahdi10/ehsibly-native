@@ -41,3 +41,23 @@ export const parseAmount = text => {
   const n = Number(String(text ?? '').replace(/,/g, ''));
   return Number.isFinite(n) ? n : 0;
 };
+
+// Notification timestamp: time of day for today, a localized "yesterday",
+// otherwise YYYY-MM-DD. (Hermes' Intl support is unreliable, so this is manual.)
+export const formatNotificationTime = (value, t) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+  const pad = n => String(n).padStart(2, '0');
+  const now = new Date();
+  const dayStart = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diffDays = Math.round((dayStart(now) - dayStart(date)) / 86400000);
+  if (diffDays === 0) {
+    return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+  if (diffDays === 1) {
+    return t('yesterday');
+  }
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};

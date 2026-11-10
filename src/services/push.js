@@ -5,6 +5,7 @@ import notifee, {AndroidImportance, EventType} from '@notifee/react-native';
 import {registerDeviceToken, removeDeviceToken} from './deviceToken';
 import {getInvoiceById} from './invoices/multiContainerWithoutC';
 import {navigateWhenReady} from '../navigation/navigationRef';
+import {emitNotificationsUpdated} from './notifications';
 
 // Channel id must match the one declared in AndroidManifest.xml so FCM's
 // background/tray notifications and our foreground Notifee display agree.
@@ -95,7 +96,11 @@ export const displayForegroundNotification = async remoteMessage => {
 // self-refreshes on focus by invoiceNumber) if the fetch fails.
 export const handleNotificationOpen = async data => {
   const invoiceId = data?.invoiceId;
-  if (!invoiceId) {return;}
+  // Not about a transaction (e.g. subscription): open the notifications list.
+  if (!invoiceId) {
+    if (data?.notificationId) {navigateWhenReady('Notifications');}
+    return;
+  }
   let invoice = {id: invoiceId, invoiceNumber: data?.invoiceNumber};
   try {
     const result = await getInvoiceById(invoiceId);
@@ -110,7 +115,10 @@ export const handleNotificationOpen = async data => {
 // Wires foreground + tap handlers. Call once from the authed app tree; returns
 // an unsubscribe for cleanup.
 export const setupNotificationHandlers = () => {
-  const unsubForeground = messaging().onMessage(displayForegroundNotification);
+  const unsubForeground = messaging().onMessage(async remoteMessage => {
+    emitNotificationsUpdated();
+    await displayForegroundNotification(remoteMessage);
+  });
 
   const unsubOpened = messaging().onNotificationOpenedApp(remoteMessage => {
     handleNotificationOpen(remoteMessage?.data);

@@ -534,5 +534,14 @@
   "sendToBankAction": "ناردن بۆ بانک",
   "sendToBankConfirmTitle": "بنێردرێت بۆ بانک؟",
   "sendToBankConfirmMessage": "بەمە داواکارییەکە دەخرێتە لیستی پێداچوونەوەی بانک. دوای ناردن ناتوانیت دەستکاری بکەیت.",
-  "applicationSentNotice": "ئەم داواکارییە بۆ بانک نێردراوە."
+  "applicationSentNotice": "ئەم داواکارییە بۆ بانک نێردراوە.",
+  "notifications": "ئاگادارکردنەوەکان",
+  "notificationsAll": "هەمووی",
+  "notificationsUnread": "نەخوێندراوە",
+  "markAllAsRead": "هەمووی وەک خوێندراوە دیاری بکە",
+  "noNotifications": "هیچ ئاگادارکردنەوەیەک نییە",
+  "noUnreadNotifications": "هیچ ئاگادارکردنەوەیەکی نەخوێندراو نییە",
+  "noNotificationsHint": "نوێکارییەکانی مامەڵە و بەشداریکردنەکەت لێرە دەردەکەون",
+  "failedToLoadNotifications": "نەتوانرا ئاگادارکردنەوەکان باربکرێن",
+  "yesterday": "دوێنێ"
 }

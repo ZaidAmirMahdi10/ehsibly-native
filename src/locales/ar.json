@@ -536,5 +536,14 @@
   "sendToBankAction": "إرسال إلى المصرف",
   "sendToBankConfirmTitle": "إرسال إلى المصرف؟",
   "sendToBankConfirmMessage": "سيتم تقديم الطلب إلى قائمة مراجعة المصرف. لن تتمكن من تعديله بعد الإرسال.",
-  "applicationSentNotice": "تم إرسال هذا الطلب إلى المصرف."
+  "applicationSentNotice": "تم إرسال هذا الطلب إلى المصرف.",
+  "notifications": "الإشعارات",
+  "notificationsAll": "الكل",
+  "notificationsUnread": "غير مقروءة",
+  "markAllAsRead": "تحديد الكل كمقروء",
+  "noNotifications": "لا توجد إشعارات",
+  "noUnreadNotifications": "لا توجد إشعارات غير مقروءة",
+  "noNotificationsHint": "ستظهر هنا تحديثات معاملاتك واشتراكك",
+  "failedToLoadNotifications": "تعذّر تحميل الإشعارات",
+  "yesterday": "الأمس"
 }
