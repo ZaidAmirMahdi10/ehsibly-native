@@ -89,3 +89,25 @@ export const saveNotesForBank = async (invoiceId, notes) => {
   const response = await apiClient.put(`${route}/addNotes/${invoiceId}`, {notes});
   return response.data;
 };
+
+// PUT /updateInvoiceOfMultiContsWithoutC/:id — the web app's invoice edit.
+// The body carries the invoice id AND the FULL list of its containers
+// (`ShippedContainer`): the backend deletes every container that is linked to
+// the invoice but missing from this array, so callers must always send the
+// existing ones (with their ids) alongside any new ones. Only allowed while
+// the invoice's bankStatus is NOT_SENT or REJECTED.
+export const updateInvoice = async payload => {
+  const response = await apiClient.put(
+    `/updateInvoiceOfMultiContsWithoutC/${payload.id}`,
+    payload,
+  );
+  return response.data;
+};
+
+// DELETE /archiveInvoiceOfMultiContainers/:id — moves the invoice into the
+// archive table. Only allowed while bankStatus is NOT_SENT (the backend
+// answers 400 "cannotArchiveMCIBecauseLinked" otherwise).
+export const archiveInvoice = async invoiceId => {
+  const response = await apiClient.delete(`/archiveInvoiceOfMultiContainers/${invoiceId}`);
+  return response.data;
+};

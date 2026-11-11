@@ -33,6 +33,7 @@ import {
   getMultiContainerInvoices,
   updateInvoiceMainFiles,
   deleteInvoiceDoc,
+  archiveInvoice,
   setCustomsDeclarationNumber as saveCustomsDeclarationNumber,
 } from '../../services/invoices/multiContainerWithoutC';
 import {
@@ -51,9 +52,15 @@ import {ChevronLeft, ChevronRight} from 'lucide-react-native';
 
 const TABS = {
   DOCUMENTS: 'documents',
+  BENEFICIARY: 'beneficiary',
   PAYMENT: 'payment',
   CONTAINERS: 'containers',
 };
+
+// Documents that belong to the beneficiary (the supplier), merged into the
+// invoice's file list from the supplier's own KYC table. They get their own
+// tab, read-only: they aren't part of this invoice's uploads.
+const BENEFICIARY_DOC_TYPES = ['supplierCertificate', 'articlesOfAssociation', 'articleOfAssociation'];
 
 const CUSTOMS_DECLARATION_TYPE = 'customsDeclaration';
 // Confirmed against the web app (ViewInvoice.js) — the same fixed 6 options,
@@ -212,6 +219,48 @@ const InvoiceDetailScreen = () => {
       url: getInvoiceFileUrl(doc.id),
       title: t(DOC_LABEL_KEYS[doc.type] || 'docViewBtn'),
     });
+  };
+
+  // Same gating the backend enforces: an edit is allowed while the bank has
+  // not taken the invoice yet (or after it rejected it); archiving only
+  // while it was never sent. bankStatus arrives asynchronously from the byId
+  // fetch, so the buttons simply stay hidden until it's known.
+  const canEditInvoice = invoice.bankStatus === 'NOT_SENT' || invoice.bankStatus === 'REJECTED';
+  const canArchiveInvoice = invoice.bankStatus === 'NOT_SENT';
+  const [isArchiving, setIsArchiving] = useState(false);
+
+  const handleEditInvoice = () => {
+    navigation.navigate('EditInvoice', {
+      invoiceId: invoice.id,
+      onSaved: changes =>
+        // `amount` is the list DTO's pre-formatted string — drop it so the
+        // header falls back to the edited amountForSupplier.
+        setInvoice(prev => ({...prev, ...changes, amount: undefined})),
+    });
+  };
+
+  const handleArchiveInvoice = () => {
+    showAlert(t('archiveInvoiceConfirmTitle'), `${t('archiveInvoiceConfirmMessage')} ${invoice.invoiceNumber}`, [
+      {text: t('cancel'), style: 'cancel'},
+      {
+        text: t('archiveAction'),
+        style: 'destructive',
+        onPress: async () => {
+          setIsArchiving(true);
+          try {
+            await archiveInvoice(invoice.id);
+            navigation.goBack();
+          } catch (err) {
+            setIsArchiving(false);
+            showAlert(
+              err?.response?.data?.message === 'cannotArchiveMCIBecauseLinked'
+                ? t('cannotArchiveInvoiceError')
+                : t('genericErrorMessage'),
+            );
+          }
+        },
+      },
+    ]);
   };
 
   const handleDeleteDoc = doc => {
@@ -513,6 +562,26 @@ const InvoiceDetailScreen = () => {
         ) : null}
       </View>
 
+      {canEditInvoice ? (
+        <View style={[styles.invoiceActions, rowDirection]}>
+          <PrimaryButton
+            title={t('editInvoiceAction')}
+            variant="secondary"
+            onPress={handleEditInvoice}
+            style={styles.invoiceActionBtn}
+          />
+          {canArchiveInvoice ? (
+            <PrimaryButton
+              title={t('archiveAction')}
+              variant="danger"
+              onPress={handleArchiveInvoice}
+              loading={isArchiving}
+              style={styles.invoiceActionBtn}
+            />
+          ) : null}
+        </View>
+      ) : null}
+
       <View style={[styles.tabBar, rowDirection]}>
         <TouchableOpacity
           style={[styles.tab, activeTab === TABS.DOCUMENTS && styles.tabActive]}
@@ -530,6 +599,21 @@ const InvoiceDetailScreen = () => {
           </View>
         </TouchableOpacity>
         <TouchableOpacity
+          style={[styles.tab, activeTab === TABS.BENEFICIARY && styles.tabActive]}
+          onPress={() => setActiveTab(TABS.BENEFICIARY)}>
+          <View style={styles.tabContent}>
+            <CustomText style={styles.tabIcon} paddingTop={0}>
+              🧾
+            </CustomText>
+            <CustomText
+              bold={activeTab === TABS.BENEFICIARY}
+              style={[styles.tabText, activeTab === TABS.BENEFICIARY && styles.tabTextActive]}
+              paddingTop={0}>
+              {t('tabBeneficiaryDocs')}
+            </CustomText>
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity
           style={[styles.tab, activeTab === TABS.PAYMENT && styles.tabActive]}
           onPress={() => setActiveTab(TABS.PAYMENT)}>
           <View style={styles.tabContent}>
@@ -540,7 +624,7 @@ const InvoiceDetailScreen = () => {
               bold={activeTab === TABS.PAYMENT}
               style={[styles.tabText, activeTab === TABS.PAYMENT && styles.tabTextActive]}
               paddingTop={0}>
-              {t('tabPayment')}
+              {t('tabTransfers')}
             </CustomText>
           </View>
         </TouchableOpacity>
@@ -573,6 +657,38 @@ const InvoiceDetailScreen = () => {
               </View>
             ))}
           </View>
+        ) : activeTab === TABS.BENEFICIARY ? (
+          docsLoading ? (
+            <View style={styles.card}>
+              <LoadingState />
+            </View>
+          ) : docsError ? (
+            <View style={styles.card}>
+              <ErrorState message={docsError} onRetry={loadInvoiceDocs} />
+            </View>
+          ) : (
+            <>
+              <CustomText bold style={styles.sectionTitle}>
+                {t('beneficiaryDocsTitle')}
+              </CustomText>
+              {invoiceDocs.filter(doc => BENEFICIARY_DOC_TYPES.includes(doc.type)).length === 0 ? (
+                <CustomText center style={styles.emptyText}>
+                  {t('noBeneficiaryDocs')}
+                </CustomText>
+              ) : (
+                invoiceDocs
+                  .filter(doc => BENEFICIARY_DOC_TYPES.includes(doc.type))
+                  .map(doc => (
+                    <DocumentListItem
+                      key={doc.id}
+                      type={doc.type}
+                      isRTL={isRTL}
+                      onView={() => handleViewDoc(doc)}
+                    />
+                  ))
+              )}
+            </>
+          )
         ) : activeTab === TABS.DOCUMENTS ? (
           docsLoading ? (
             <View style={styles.card}>
@@ -587,7 +703,7 @@ const InvoiceDetailScreen = () => {
               <CustomText bold style={styles.sectionTitle}>
                 {t('invoiceDocumentsTitle')}
               </CustomText>
-              {invoiceDocs.map(doc => (
+              {invoiceDocs.filter(doc => !BENEFICIARY_DOC_TYPES.includes(doc.type)).map(doc => (
                 <React.Fragment key={doc.id}>
                   {doc.type === CUSTOMS_DECLARATION_TYPE && bayanNumber ? (
                     <TouchableOpacity
@@ -804,6 +920,16 @@ const styles = StyleSheet.create({
   container: {padding: 16, paddingBottom: 40},
   emptyActionWrap: {padding: 24, alignItems: 'center'},
   fullWidthBtn: {width: '100%', marginTop: 12},
+  invoiceActions: {
+    flexDirection: 'row',
+    columnGap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: COLORS.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  invoiceActionBtn: {flex: 1, paddingVertical: 10},
   actionsWrap: {marginTop: 16, gap: 10},
   actionBtn: {marginTop: 0},
   sentNotice: {fontSize: 12, color: COLORS.success, fontWeight: '600', padding: 8},

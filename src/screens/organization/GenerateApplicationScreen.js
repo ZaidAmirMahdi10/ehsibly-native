@@ -2,6 +2,7 @@ import React, {useContext, useEffect, useState} from 'react';
 import {ScrollView, StyleSheet, TouchableOpacity, View} from 'react-native';
 import {useTranslation} from 'react-i18next';
 import {useNavigation, useRoute} from '@react-navigation/native';
+import Share from 'react-native-share';
 
 import {LanguageContext} from '../../../App';
 import CustomText from '../../components/CustomText';
@@ -174,7 +175,9 @@ const GenerateApplicationScreen = () => {
     setError(null);
     setIsSubmitting(true);
     try {
-      await generatePermit({
+      // Same file name the web app gives the downloaded ZIP.
+      const zipFileName = `${invoice.invoiceNumber || 'unknown'}-${invoice.amountForSupplier || 0}${invoice.currency || ''}.zip`;
+      const {path: zipPath, fileName} = await generatePermit({
         invoiceId: invoice.id,
         userId: session?.userId,
         companyBankId: companyAccount.bankId,
@@ -192,7 +195,20 @@ const GenerateApplicationScreen = () => {
         hasGoodsEnteredTheCountry: isBaghdadBank ? hasGoodsEnteredTheCountry : false,
         refrenceNumber: referenceNumber.trim() || undefined,
         paymentDate: new Date().toISOString(),
-      });
+      }, zipFileName);
+      // Persist the application first (done above), then hand the downloaded
+      // ZIP to the OS share sheet so the user can save it to Files / open it.
+      // A share failure or cancel is non-fatal — the application already exists.
+      try {
+        await Share.open({
+          url: `file://${zipPath}`,
+          type: 'application/zip',
+          filename: fileName,
+          failOnCancel: false,
+        });
+      } catch (shareErr) {
+        console.warn('Sharing generated documents failed', shareErr);
+      }
       // Persist bank-visible notes (only meaningful for Bank of Baghdad).
       // Non-fatal: the application was already generated, so a note failure
       // shouldn't surface as a hard error / tempt a duplicate submit.

@@ -10,6 +10,9 @@ export const DOC_LABEL_KEYS = {
   invoice: 'docInvoice',
   supplierCertificate: 'docSupplierCertificate',
   articlesOfAssociation: 'docArticlesOfAssociation',
+  // The backend stores this one under the singular name, so both spellings exist.
+  articleOfAssociation: 'docArticlesOfAssociation',
+  finalAccounts: 'docFinalAccounts',
   customsDeclaration: 'docCustomsDeclaration',
   thirdPartyContract: 'docThirdPartyContract',
   shippingPolicy: 'docShippingPolicy',
@@ -29,6 +32,8 @@ const DOC_ICONS = {
   invoice: '📄',
   supplierCertificate: '📋',
   articlesOfAssociation: '📑',
+  articleOfAssociation: '📑',
+  finalAccounts: '📊',
   customsDeclaration: '🛃',
   thirdPartyContract: '📜',
   shippingPolicy: '🚢',
