@@ -589,5 +589,11 @@
   "tabTransfers": "الحوالات",
   "beneficiaryDocsTitle": "أوراق المستفيد",
   "noBeneficiaryDocs": "لا توجد أوراق للمستفيد",
-  "docFinalAccounts": "الحسابات الختامية"
+  "docFinalAccounts": "الحسابات الختامية",
+  "deleteBeneficiaryDocTitle": "حذف المستند",
+  "deleteBeneficiaryDocMessage": "هذا المستند يخص المستفيد وسيُحذف من ملف المستفيد في جميع فواتيره. هل تريد المتابعة؟",
+  "errorViewFile": "فشل في عرض الملف.",
+  "beneficiaryDocsBlockSendMessage": "أوراق المستفيد ناقصة أو تالفة. عالجها من تبويب «أوراق المستفيد» قبل الإرسال إلى المصرف:",
+  "beneficiaryDocMissing": "ناقص",
+  "beneficiaryDocBroken": "تالف"
 }

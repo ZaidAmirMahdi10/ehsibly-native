@@ -587,5 +587,11 @@
   "tabTransfers": "حەوالەکان",
   "beneficiaryDocsTitle": "بەڵگەکانی سوودمەند",
   "noBeneficiaryDocs": "هیچ بەڵگەیەکی سوودمەند نییە",
-  "docFinalAccounts": "هەژمارە کۆتاییەکان"
+  "docFinalAccounts": "هەژمارە کۆتاییەکان",
+  "deleteBeneficiaryDocTitle": "سڕینەوەی بەڵگەنامە",
+  "deleteBeneficiaryDocMessage": "ئەم بەڵگەنامەیە هی سوودمەندەکەیە و لە فایلی سوودمەند لە هەموو پسوولەکانی دەسڕدرێتەوە. بەردەوام دەبیت؟",
+  "errorViewFile": "نەتوانرا فایلەکە پیشان بدرێت.",
+  "beneficiaryDocsBlockSendMessage": "بەڵگەکانی سوودمەند تەواو نین یان خراپن. لە تابی «بەڵگەکانی سوودمەند» چاکیان بکە پێش ناردن بۆ بانک:",
+  "beneficiaryDocMissing": "کەمە",
+  "beneficiaryDocBroken": "خراپە"
 }

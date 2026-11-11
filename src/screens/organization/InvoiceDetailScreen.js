@@ -23,6 +23,7 @@ import ErrorState from '../../components/ErrorState';
 import DocumentListItem, {DOC_LABEL_KEYS} from '../../components/DocumentListItem';
 import DocumentUploadZone from '../../components/DocumentUploadZone';
 import InfoBox from '../../components/InfoBox';
+import ErrorBox from '../../components/ErrorBox';
 import PrimaryButton from '../../components/PrimaryButton';
 import FormField from '../../components/FormField';
 import ModalSheet from '../../components/ModalSheet';
@@ -34,14 +35,18 @@ import {
   updateInvoiceMainFiles,
   deleteInvoiceDoc,
   archiveInvoice,
+  isInvoiceFileAvailable,
   setCustomsDeclarationNumber as saveCustomsDeclarationNumber,
 } from '../../services/invoices/multiContainerWithoutC';
+import {deleteSupplierDocument, uploadSupplierDocument} from '../../services/suppliers';
 import {
   getPaymentDetail,
   updateInvoicePaymentStatus,
   updatePaymentDocuments,
 } from '../../services/paymentDetails';
 import {
+  BENEFICIARY_DOC_TYPES,
+  BENEFICIARY_UPLOAD_SLOTS,
   INVOICE_DOC_TYPES,
   NON_INVOICE_DOC_SOURCES,
   paymentDocTypesForBank,
@@ -56,11 +61,6 @@ const TABS = {
   PAYMENT: 'payment',
   CONTAINERS: 'containers',
 };
-
-// Documents that belong to the beneficiary (the supplier), merged into the
-// invoice's file list from the supplier's own KYC table. They get their own
-// tab, read-only: they aren't part of this invoice's uploads.
-const BENEFICIARY_DOC_TYPES = ['supplierCertificate', 'articlesOfAssociation', 'articleOfAssociation'];
 
 const CUSTOMS_DECLARATION_TYPE = 'customsDeclaration';
 // Confirmed against the web app (ViewInvoice.js) — the same fixed 6 options,
@@ -115,6 +115,10 @@ const InvoiceDetailScreen = () => {
   const [paymentError, setPaymentError] = useState(null);
   const [isSendingToBank, setIsSendingToBank] = useState(false);
   const [uploadingType, setUploadingType] = useState(null);
+  // ids of documents whose file the server can't serve (flagged in the list,
+  // like the web's "Failed to view the file" message above a broken file).
+  const [brokenDocIds, setBrokenDocIds] = useState({});
+  const [checkingDocs, setCheckingDocs] = useState(false);
 
   const refreshInvoice = async () => {
     try {
@@ -150,13 +154,37 @@ const InvoiceDetailScreen = () => {
     loadInvoiceDocs();
   };
 
+  const checkDocsAvailability = async docs => {
+    setCheckingDocs(true);
+    const results = await Promise.all(
+      docs.map(async doc => {
+        try {
+          return (await isInvoiceFileAvailable(doc.id)) ? null : doc.id;
+        } catch (err) {
+          return null; // network trouble says nothing about the file itself
+        }
+      }),
+    );
+    setBrokenDocIds(prev => {
+      const next = {...prev};
+      docs.forEach(doc => delete next[doc.id]);
+      results.filter(Boolean).forEach(id => {
+        next[id] = true;
+      });
+      return next;
+    });
+    setCheckingDocs(false);
+  };
+
   const loadInvoiceDocs = async () => {
     setDocsLoading(true);
     setDocsError(null);
     try {
       const data = await getInvoiceMainFiles(invoice.id);
-      setInvoiceDocs(data?.data?.documents || []);
+      const docs = data?.data?.documents || [];
+      setInvoiceDocs(docs);
       setBayanNumber(data?.data?.customsDeclrationNumber || null);
+      checkDocsAvailability(docs);
     } catch (err) {
       setDocsError(t('genericErrorMessage'));
     } finally {
@@ -279,6 +307,61 @@ const InvoiceDetailScreen = () => {
         },
       },
     ]);
+  };
+
+  // Beneficiary documents live on the supplier, not the invoice — they're
+  // removed through the supplier's own (full-sync) files endpoint, so the
+  // names of every other supplier document are re-sent as keep-markers. This
+  // removes the file from the supplier itself, hence the explicit warning.
+  const handleDeleteBeneficiaryDoc = doc => {
+    showAlert(t('deleteBeneficiaryDocTitle'), t('deleteBeneficiaryDocMessage'), [
+      {text: t('cancel'), style: 'cancel'},
+      {
+        text: t('deleteAction'),
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const supplierDocNames = invoiceDocs
+              .filter(d => BENEFICIARY_DOC_TYPES.includes(d.type))
+              .map(d => d.type);
+            await deleteSupplierDocument(invoice.supplier?.id, doc.type, supplierDocNames);
+            await loadInvoiceDocs();
+          } catch (err) {
+            showAlert(t('genericErrorMessage'));
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleUploadBeneficiaryDoc = async docType => {
+    let file;
+    try {
+      [file] = await pick({type: [types.pdf, types.images]});
+    } catch (err) {
+      if (!(isErrorWithCode(err) && err.code === errorCodes.OPERATION_CANCELED)) {
+        showAlert(t('uploadErrorMessage'));
+      }
+      return;
+    }
+
+    setUploadingType(docType);
+    try {
+      const supplierDocNames = invoiceDocs
+        .filter(d => BENEFICIARY_DOC_TYPES.includes(d.type))
+        .map(d => d.type);
+      await uploadSupplierDocument(
+        invoice.supplier?.id,
+        docType,
+        {uri: file.uri, name: file.name || docType, type: file.type || 'application/pdf'},
+        supplierDocNames,
+      );
+      await loadInvoiceDocs();
+    } catch (err) {
+      showAlert(t('uploadErrorMessage'));
+    } finally {
+      setUploadingType(null);
+    }
   };
 
   // Both upload endpoints are full syncs of their doc set — any known field
@@ -433,7 +516,24 @@ const InvoiceDetailScreen = () => {
     }
   };
 
+  // The beneficiary's own papers (supplier certificate + articles of
+  // association) must be present AND readable before an application can go to
+  // the bank. Only judged once the document list has loaded and the
+  // availability probe has finished, so a slow load can't show a false alarm.
+  const beneficiaryIssues = BENEFICIARY_UPLOAD_SLOTS.map(slot => {
+    const doc = invoiceDocs.find(d => slot.aliases.includes(d.type));
+    if (!doc) {
+      return {type: slot.type, reason: 'missing'};
+    }
+    return brokenDocIds[doc.id] ? {type: slot.type, reason: 'broken'} : null;
+  }).filter(Boolean);
+  const beneficiaryDocsReady = !docsLoading && !docsError && !checkingDocs;
+  const beneficiaryBlocksSend = beneficiaryDocsReady && beneficiaryIssues.length > 0;
+
   const handleSendToBank = async () => {
+    if (beneficiaryBlocksSend) {
+      return;
+    }
     // Document-completeness gate (explicit product decision 2026-07-09: the
     // stricter bayan-based set, deliberately broader than web
     // ViewInvoice.js's validateDocuments):
@@ -668,6 +768,11 @@ const InvoiceDetailScreen = () => {
             </View>
           ) : (
             <>
+              {invoice.supplier?.name ? (
+                <CustomText bold style={styles.beneficiaryName}>
+                  {invoice.supplier.name}
+                </CustomText>
+              ) : null}
               <CustomText bold style={styles.sectionTitle}>
                 {t('beneficiaryDocsTitle')}
               </CustomText>
@@ -681,12 +786,26 @@ const InvoiceDetailScreen = () => {
                   .map(doc => (
                     <DocumentListItem
                       key={doc.id}
+                      broken={!!brokenDocIds[doc.id]}
                       type={doc.type}
                       isRTL={isRTL}
                       onView={() => handleViewDoc(doc)}
+                      onDelete={() => handleDeleteBeneficiaryDoc(doc)}
                     />
                   ))
               )}
+              <View style={styles.uploadSection}>
+                {BENEFICIARY_UPLOAD_SLOTS.filter(
+                  slot => !invoiceDocs.some(doc => slot.aliases.includes(doc.type)),
+                ).map(slot => (
+                  <DocumentUploadZone
+                    key={slot.type}
+                    label={t(DOC_LABEL_KEYS[slot.type])}
+                    uploading={uploadingType === slot.type}
+                    onPress={() => handleUploadBeneficiaryDoc(slot.type)}
+                  />
+                ))}
+              </View>
             </>
           )
         ) : activeTab === TABS.DOCUMENTS ? (
@@ -719,6 +838,7 @@ const InvoiceDetailScreen = () => {
                     </TouchableOpacity>
                   ) : null}
                   <DocumentListItem
+                    broken={!!brokenDocIds[doc.id]}
                     type={doc.type}
                     isRTL={isRTL}
                     onView={() => handleViewDoc(doc)}
@@ -761,6 +881,7 @@ const InvoiceDetailScreen = () => {
                 .map(doc => (
                   <DocumentListItem
                     key={doc.id}
+                    broken={!!brokenDocIds[doc.id]}
                     type={doc.type}
                     isRTL={isRTL}
                     onView={() => handleViewDoc(doc)}
@@ -857,10 +978,23 @@ const InvoiceDetailScreen = () => {
                   onPress={() => navigation.navigate('GenerateApplication', {invoice})}
                   style={styles.actionBtn}
                 />
+                {beneficiaryBlocksSend ? (
+                  <ErrorBox
+                    text={`${t('beneficiaryDocsBlockSendMessage')}\n${beneficiaryIssues
+                      .map(
+                        issue =>
+                          `• ${t(DOC_LABEL_KEYS[issue.type])} — ${t(
+                            issue.reason === 'missing' ? 'beneficiaryDocMissing' : 'beneficiaryDocBroken',
+                          )}`,
+                      )
+                      .join('\n')}`}
+                  />
+                ) : null}
                 <PrimaryButton
                   title={t('sendToBankAction')}
                   onPress={handleSendToBank}
                   loading={isSendingToBank}
+                  disabled={beneficiaryBlocksSend || checkingDocs}
                   style={styles.actionBtn}
                 />
               </>
@@ -920,6 +1054,7 @@ const styles = StyleSheet.create({
   container: {padding: 16, paddingBottom: 40},
   emptyActionWrap: {padding: 24, alignItems: 'center'},
   fullWidthBtn: {width: '100%', marginTop: 12},
+  beneficiaryName: {fontSize: 16, color: COLORS.primary, marginBottom: 2},
   invoiceActions: {
     flexDirection: 'row',
     columnGap: 10,

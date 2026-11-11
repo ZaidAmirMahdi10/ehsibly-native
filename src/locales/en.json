@@ -588,5 +588,11 @@
   "tabTransfers": "Transfers",
   "beneficiaryDocsTitle": "Beneficiary Documents",
   "noBeneficiaryDocs": "No beneficiary documents",
-  "docFinalAccounts": "Final Accounts"
+  "docFinalAccounts": "Final Accounts",
+  "deleteBeneficiaryDocTitle": "Delete document",
+  "deleteBeneficiaryDocMessage": "This document belongs to the beneficiary and will be removed from the beneficiary's file for all invoices. Continue?",
+  "errorViewFile": "Failed to view the file.",
+  "beneficiaryDocsBlockSendMessage": "The beneficiary's documents are incomplete or damaged. Fix them in the Beneficiary Docs tab before sending to the bank:",
+  "beneficiaryDocMissing": "missing",
+  "beneficiaryDocBroken": "damaged"
 }

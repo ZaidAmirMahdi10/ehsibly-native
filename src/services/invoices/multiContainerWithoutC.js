@@ -111,3 +111,21 @@ export const archiveInvoice = async invoiceId => {
   const response = await apiClient.delete(`/archiveInvoiceOfMultiContainers/${invoiceId}`);
   return response.data;
 };
+
+// HEAD getInvoiceFile/:docId — a cheap "can this file actually be served?"
+// probe (the same handler answers 404/500 when the DB row or the stored file
+// is missing/broken), so the list can flag broken documents up front instead
+// of failing only once someone taps View — like the web's PDF viewer does.
+// Resolves true when the server answers 2xx, false when it answers an error
+// status; a network failure rethrows (that's not evidence the file is bad).
+export const isInvoiceFileAvailable = async docId => {
+  try {
+    await apiClient.head(`/${route}/getInvoiceFile/${docId}`);
+    return true;
+  } catch (err) {
+    if (err?.response) {
+      return false;
+    }
+    throw err;
+  }
+};
