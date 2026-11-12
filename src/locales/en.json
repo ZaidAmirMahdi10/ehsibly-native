@@ -592,6 +592,8 @@
   "deleteBeneficiaryDocTitle": "Delete document",
   "deleteBeneficiaryDocMessage": "This document belongs to the beneficiary and will be removed from the beneficiary's file for all invoices. Continue?",
   "errorViewFile": "Failed to view the file.",
+  "supplierFileBroken": "This file is broken or missing. Please remove it and re-upload it.",
+  "supplierDocsBrokenCannotSend": "Some of the supplier's documents are broken or missing, so this application can't be sent to the bank. Please go to the Suppliers page, open this supplier, then remove these documents and re-upload them.",
   "beneficiaryDocsBlockSendMessage": "The beneficiary's documents are incomplete or damaged. Fix them in the Beneficiary Docs tab before sending to the bank:",
   "beneficiaryDocMissing": "missing",
   "beneficiaryDocBroken": "damaged"

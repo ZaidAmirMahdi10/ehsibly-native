@@ -57,7 +57,7 @@ const DocumentListItem = ({type, isRTL, onView, onDelete, broken}) => {
     <>
     {broken ? (
       <CustomText style={styles.brokenText} paddingTop={0}>
-        {t('errorViewFile')}
+        {t('supplierFileBroken')}
       </CustomText>
     ) : null}
     <View style={[styles.row, broken && styles.rowBroken, {flexDirection: isRTL ? 'row-reverse' : 'row'}]}>

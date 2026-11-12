@@ -593,6 +593,8 @@
   "deleteBeneficiaryDocTitle": "حذف المستند",
   "deleteBeneficiaryDocMessage": "هذا المستند يخص المستفيد وسيُحذف من ملف المستفيد في جميع فواتيره. هل تريد المتابعة؟",
   "errorViewFile": "فشل في عرض الملف.",
+  "supplierFileBroken": "هذا الملف تالف أو مفقود. يرجى حذفه وإعادة رفعه.",
+  "supplierDocsBrokenCannotSend": "بعض مستندات المورّد تالفة أو مفقودة، لذا لا يمكن إرسال المعاملة إلى المصرف. يرجى الذهاب إلى صفحة الموّردون، واختيار هذا المورّد، ثم حذف هذه المستندات وإعادة رفعها.",
   "beneficiaryDocsBlockSendMessage": "أوراق المستفيد ناقصة أو تالفة. عالجها من تبويب «أوراق المستفيد» قبل الإرسال إلى المصرف:",
   "beneficiaryDocMissing": "ناقص",
   "beneficiaryDocBroken": "تالف"

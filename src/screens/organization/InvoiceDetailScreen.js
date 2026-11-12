@@ -980,7 +980,7 @@ const InvoiceDetailScreen = () => {
                 />
                 {beneficiaryBlocksSend ? (
                   <ErrorBox
-                    text={`${t('beneficiaryDocsBlockSendMessage')}\n${beneficiaryIssues
+                    text={`${t('supplierDocsBrokenCannotSend')}\n${beneficiaryIssues
                       .map(
                         issue =>
                           `• ${t(DOC_LABEL_KEYS[issue.type])} — ${t(
