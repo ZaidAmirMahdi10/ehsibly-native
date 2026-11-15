@@ -101,6 +101,7 @@ const InvoiceDetailScreen = () => {
   const [bayanNumber, setBayanNumber] = useState(null);
   const [bayanPickerVisible, setBayanPickerVisible] = useState(false);
   const [otherFileModalVisible, setOtherFileModalVisible] = useState(false);
+  const [rejectionModalVisible, setRejectionModalVisible] = useState(false);
   const [newOtherFileName, setNewOtherFileName] = useState('');
 
   const [paymentDetail, setPaymentDetail] = useState(null);
@@ -127,7 +128,13 @@ const InvoiceDetailScreen = () => {
       if (fresh) {
         // The list endpoint's DTO deliberately omits notesForBank/bankStatus
         // (raw columns) — keep the byId-fetched values instead of clobbering.
-        setInvoice(prev => ({...fresh, notesForBank: prev?.notesForBank, bankStatus: prev?.bankStatus}));
+        setInvoice(prev => ({
+          ...fresh,
+          notesForBank: prev?.notesForBank,
+          bankStatus: prev?.bankStatus,
+          rejectionReason: prev?.rejectionReason,
+          rejectionReasonsHistories: prev?.rejectionReasonsHistories,
+        }));
       }
     } catch (err) {
       // Non-fatal — the screen keeps showing the last known state.
@@ -186,7 +193,13 @@ const InvoiceDetailScreen = () => {
         if (full) {
           // Both fields are raw columns the list endpoint's DTO omits:
           // notesForBank for display, bankStatus for the Edit/Send gating.
-          setInvoice(prev => ({...prev, notesForBank: full.notesForBank, bankStatus: full.bankStatus}));
+          setInvoice(prev => ({
+            ...prev,
+            notesForBank: full.notesForBank,
+            bankStatus: full.bankStatus,
+            rejectionReason: full.rejectionReason,
+            rejectionReasonsHistories: full.rejectionReasonsHistories,
+          }));
         }
       } catch (err) {
         // Non-fatal: the note simply stays hidden if this lookup fails.
@@ -447,6 +460,14 @@ const InvoiceDetailScreen = () => {
     ]);
   };
 
+  // Latest rejection first, then earlier ones from history (deduplicated).
+  const rejectionEntries = [
+    ...(invoice.rejectionReason ? [{id: 'latest', text: invoice.rejectionReason}] : []),
+    ...(invoice.rejectionReasonsHistories || [])
+      .filter(h => h.rejectionReason && h.rejectionReason !== invoice.rejectionReason)
+      .map(h => ({id: h.id, text: h.rejectionReason, date: h.date})),
+  ];
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.primaryDark} />
@@ -510,6 +531,31 @@ const InvoiceDetailScreen = () => {
               {invoice.notesForBank}
             </CustomText>
           </View>
+        ) : null}
+
+        {invoice.rejectionReason ||
+        invoice.rejectionReasonsHistories?.length > 0 ? (
+          // Compact preview: the full text can be very long, so it lives in a
+          // scrollable modal instead of stretching the screen.
+          <TouchableOpacity
+            style={styles.rejectionBox}
+            activeOpacity={0.7}
+            onPress={() => setRejectionModalVisible(true)}>
+            <CustomText bold style={styles.rejectionTitle}>
+              {t('declineReasonLabel')}
+            </CustomText>
+            <CustomText
+              style={styles.rejectionText}
+              lineHeight={22}
+              numberOfLines={3}>
+              {rejectionEntries[0]?.text}
+            </CustomText>
+            <CustomText bold style={styles.rejectionMore} paddingTop={0}>
+              {rejectionEntries.length > 1
+                ? `${t('viewAllReasons')} (${rejectionEntries.length})`
+                : t('viewAllReasons')}
+            </CustomText>
+          </TouchableOpacity>
         ) : null}
       </View>
 
@@ -782,6 +828,29 @@ const InvoiceDetailScreen = () => {
       </ModalSheet>
 
       <ModalSheet
+        visible={rejectionModalVisible}
+        onClose={() => setRejectionModalVisible(false)}
+        title={t('declineReasonLabel')}
+        sheetStyle={styles.rejectionSheet}>
+        <ScrollView showsVerticalScrollIndicator>
+          {rejectionEntries.map((entry, index) => (
+            <View
+              key={entry.id}
+              style={index > 0 ? styles.rejectionHistoryItem : null}>
+              {entry.date ? (
+                <CustomText style={styles.rejectionDate} paddingTop={0}>
+                  {new Date(entry.date).toISOString().split('T')[0]}
+                </CustomText>
+              ) : null}
+              <CustomText style={styles.rejectionText} lineHeight={22}>
+                {entry.text}
+              </CustomText>
+            </View>
+          ))}
+        </ScrollView>
+      </ModalSheet>
+
+      <ModalSheet
         visible={otherFileModalVisible}
         onClose={() => setOtherFileModalVisible(false)}
         title={t('addOtherFileAction')}>
@@ -880,6 +949,23 @@ const styles = StyleSheet.create({
   },
   notesForBankTitle: {fontSize: 12, color: COLORS.textMuted, marginBottom: 2},
   notesForBankText: {fontSize: 13, color: COLORS.text},
+  rejectionBox: {
+    backgroundColor: `${COLORS.danger}1f`,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 12,
+  },
+  rejectionTitle: {fontSize: 12, color: COLORS.danger, marginBottom: 2},
+  rejectionText: {fontSize: 13, color: COLORS.text},
+  rejectionHistoryItem: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: `${COLORS.danger}33`,
+  },
+  rejectionMore: {fontSize: 12, color: COLORS.danger, marginTop: 8},
+  rejectionSheet: {maxHeight: '75%'},
+  rejectionDate: {fontSize: 11, color: COLORS.textMuted, marginBottom: 2},
 
   tabBar: {
     flexDirection: 'row',

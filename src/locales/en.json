@@ -131,6 +131,7 @@
   "unsupportedAccountTypeError": "This account type isn't supported in this app yet",
   "networkError": "Couldn't reach the server. Check your connection and try again",
   "genericErrorMessage": "Something went wrong",
+  "invoiceExistWithSameNumber": "There is already an invoice with this number.",
   "retry": "Retry",
 
   "registerTitle": "Create an Account",
@@ -254,6 +255,8 @@
 
   "languageSectionTitle": "Language",
   "notesForBankLabel": "Notes for the bank",
+  "declineReasonLabel": "Reason for decline",
+  "viewAllReasons": "View all reasons",
   "notesForBankPlaceholder": "Add any notes the bank should see...",
   "notesForBankVisibleNote": "These notes WILL be visible to the bank alongside the application.",
   "contactEmailAction": "Send Email",

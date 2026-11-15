@@ -115,7 +115,14 @@ const CreateInvoiceScreen = () => {
       // only when that bank is Bank of Baghdad.
       navigation.goBack();
     } catch (err) {
-      setError(err?.response?.data?.message || t('genericErrorMessage'));
+      // The backend returns a translation key (e.g. invoiceExistWithSameNumber);
+      // fall back to the raw text for messages that aren't keys.
+      const serverMessage = err?.response?.data?.message;
+      setError(
+        serverMessage
+          ? t(serverMessage, {defaultValue: serverMessage})
+          : t('genericErrorMessage'),
+      );
     } finally {
       setIsSubmitting(false);
     }

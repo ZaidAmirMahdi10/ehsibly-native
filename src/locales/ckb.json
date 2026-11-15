@@ -131,6 +131,7 @@
   "unsupportedAccountTypeError": "ئەم جۆرە هەژمارە هێشتا لەم بەرنامەیەدا پشتگیری ناکرێت",
   "networkError": "نەتوانرا پەیوەندی بە ڕاژەکارەوە بکرێت. پەیوەندییەکەت بپشکنە و دووبارە هەوڵ بدەرەوە",
   "genericErrorMessage": "هەڵەیەک ڕوویدا",
+  "invoiceExistWithSameNumber": "پسوولەیەک بەم ژمارەیە پێشتر هەیە.",
   "retry": "دووبارە هەوڵ بدەرەوە",
 
   "registerTitle": "دروستکردنی هەژمار",
@@ -253,6 +254,8 @@
 
   "languageSectionTitle": "زمان",
   "notesForBankLabel": "تێبینی بۆ بانک",
+  "declineReasonLabel": "هۆکاری ڕەتکردنەوە",
+  "viewAllReasons": "پیشاندانی هەموو هۆکارەکان",
   "notesForBankPlaceholder": "هەر تێبینییەک زیاد بکە کە دەتەوێت بانک بیبینێت...",
   "notesForBankVisibleNote": "ئەم تێبینییانە لەگەڵ داواکارییەکە بۆ بانک دیار دەبن.",
   "contactEmailAction": "ئیمەیڵمان بۆ بنێرە",
