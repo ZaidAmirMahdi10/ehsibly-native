@@ -12,7 +12,7 @@ import {
   Bell,
   CheckCheck,
   CircleCheck,
-  CircleX,
+  CircleAlert,
   Clock,
   Send,
 } from 'lucide-react-native';
@@ -40,7 +40,7 @@ const FILTERS = {ALL: 'all', UNREAD: 'unread'};
 // Icon + tone per outcome; unknown types fall back to a plain bell.
 const TYPE_VISUALS = {
   TRANSACTION_COMPLETED: {Icon: CircleCheck, color: COLORS.success},
-  TRANSACTION_INCOMPLETE: {Icon: CircleX, color: COLORS.danger},
+  TRANSACTION_INCOMPLETE: {Icon: CircleAlert, color: COLORS.danger},
   TRANSACTION_SENT: {Icon: Send, color: COLORS.primary},
   ORGANIZATION_SUBSCRIPTION_EXPIRING: {Icon: Clock, color: COLORS.pending},
   ORGANIZATION_SUBSCRIPTION_EXPIRED: {Icon: Clock, color: COLORS.danger},

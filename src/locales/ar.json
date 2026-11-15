@@ -132,6 +132,7 @@
   "unsupportedAccountTypeError": "نوع هذا الحساب غير مدعوم في هذا التطبيق حالياً",
   "networkError": "تعذّر الوصول إلى الخادم. تحقق من اتصالك وحاول مرة أخرى",
   "genericErrorMessage": "حدث خطأ ما",
+  "invoiceExistWithSameNumber": "توجد فاتورة بنفس الرقم.",
   "retry": "إعادة المحاولة",
 
   "registerTitle": "إنشاء حساب",
@@ -255,6 +256,8 @@
 
   "languageSectionTitle": "اللغة",
   "notesForBankLabel": "ملاحظات للمصرف",
+  "declineReasonLabel": "سبب الرفض",
+  "viewAllReasons": "عرض كل الأسباب",
   "notesForBankPlaceholder": "أضف أي ملاحظات تريد أن يطلع عليها المصرف...",
   "notesForBankVisibleNote": "هذه الملاحظات ستكون مرئية للمصرف مع الطلب.",
   "contactEmailAction": "راسلنا",
