@@ -16,7 +16,7 @@ import {LanguageContext} from '../../../App';
 
 import {useAlert} from '../../context/AlertContext';
 import CustomText from '../../components/CustomText';
-import StatusBadge from '../../components/StatusBadge';
+import CompanyStatusBadge, {CompanyStatusPill} from '../../components/CompanyStatusBadge';
 import StripedCard from '../../components/StripedCard';
 import LoadingState from '../../components/LoadingState';
 import ErrorState from '../../components/ErrorState';
@@ -39,10 +39,12 @@ import {
   setCustomsDeclarationNumber as saveCustomsDeclarationNumber,
 } from '../../services/invoices/multiContainerWithoutC';
 import {deleteSupplierDocument, uploadSupplierDocument} from '../../services/suppliers';
+import {useAuth} from '../../context/AuthContext';
 import {
   getPaymentDetail,
   updateInvoicePaymentStatus,
   updatePaymentDocuments,
+  getInvoicePayments,
 } from '../../services/paymentDetails';
 import {
   BENEFICIARY_DOC_TYPES,
@@ -87,6 +89,7 @@ const InvoiceDetailScreen = () => {
   const route = useRoute();
   const navigation = useNavigation();
   const {showAlert} = useAlert();
+  const {session} = useAuth();
   const {currentDirection} = useContext(LanguageContext);
   const isRTL = currentDirection === 'rtl';
   const rowDirection = {flexDirection: isRTL ? 'row-reverse' : 'row'};
@@ -112,6 +115,7 @@ const InvoiceDetailScreen = () => {
   const [newOtherFileName, setNewOtherFileName] = useState('');
 
   const [paymentDetail, setPaymentDetail] = useState(null);
+  const [allPayments, setAllPayments] = useState([]);
   const [paymentLoading, setPaymentLoading] = useState(!!invoice.latestPaymentDetail?.id);
   const [paymentError, setPaymentError] = useState(null);
   const [isSendingToBank, setIsSendingToBank] = useState(false);
@@ -199,7 +203,17 @@ const InvoiceDetailScreen = () => {
     }
   };
 
+  // Every transaction of the invoice — needed to know what's left to pay.
+  const loadAllPayments = async () => {
+    try {
+      setAllPayments(await getInvoicePayments(invoice.id));
+    } catch (err) {
+      // Non-fatal: the "create for remaining" button just stays hidden.
+    }
+  };
+
   const loadPaymentDetail = async () => {
+    loadAllPayments();
     const paymentId = invoice.latestPaymentDetail?.id;
     if (!paymentId) {
       setPaymentDetail(null);
@@ -254,6 +268,20 @@ const InvoiceDetailScreen = () => {
     return unsubscribe;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigation]);
+
+  // Same rule as the web's ViewInvoice: what's left of the invoice is its
+  // amount minus the ACCEPTED transactions; a new one can be created for it
+  // when every transaction so far is accepted (orgUser only).
+  const acceptedTotal = allPayments
+    .filter(p => p?.status === 'ACCEPTED')
+    .reduce((sum, p) => sum + (Number(p?.amount) || 0), 0);
+  const remainingAmount =
+    invoice.amountForSupplier != null ? Number(invoice.amountForSupplier) - acceptedTotal : null;
+  const canCreateForRemaining =
+    session?.userType === 'orgUser' &&
+    allPayments.length > 0 &&
+    allPayments.every(p => p?.status === 'ACCEPTED') &&
+    remainingAmount > 0.0001;
 
   const handleViewDoc = doc => {
     navigation.navigate('DocumentViewer', {
@@ -640,7 +668,7 @@ const InvoiceDetailScreen = () => {
             <CustomText style={styles.detailHeaderBank}>{invoice.supplier.name}</CustomText>
           ) : null}
         </View>
-        <StatusBadge status={invoice.generalBadgeStatus} />
+        <CompanyStatusBadge invoice={invoice} />
       </View>
 
       <View style={styles.summaryStrip}>
@@ -1002,7 +1030,12 @@ const InvoiceDetailScreen = () => {
               },
               {
                 label: t('paymentStatus'),
-                value: <StatusBadge status={paymentDetail.companyPaymentStatus} />,
+                value: (
+                  <CompanyStatusPill
+                    status={paymentDetail.companyPaymentStatus}
+                    transactionNumber={paymentDetail.transactionNumber}
+                  />
+                ),
               },
               {label: t('paymentReference'), value: paymentDetail.refrenceNumber},
               {label: t('paymentPurpose'), value: paymentDetail.purposeOfPayment},
@@ -1042,6 +1075,24 @@ const InvoiceDetailScreen = () => {
                   loading={isSendingToBank}
                   disabled={beneficiaryBlocksSend || checkingDocs}
                   style={styles.actionBtn}
+                />
+              </>
+            ) : canCreateForRemaining ? (
+              <>
+                <CustomText center style={styles.sentNotice}>
+                  {t('nextCreateForRemaining', {
+                    amount: `${formatAmount(remainingAmount)} ${paymentDetail.currency || invoice.currency || ''}`.trim(),
+                  })}
+                </CustomText>
+                <PrimaryButton
+                  title={t('createForRemainingAction')}
+                  onPress={() =>
+                    navigation.navigate('GenerateApplication', {
+                      invoice: {...invoice, totalPaid: acceptedTotal},
+                      createForRemaining: true,
+                    })
+                  }
+                  style={[styles.actionBtn, styles.fullWidthBtn]}
                 />
               </>
             ) : (
