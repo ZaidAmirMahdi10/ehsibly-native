@@ -29,6 +29,7 @@ const BADGES = {
 
 // The web only renders this cell for Bank of Baghdad applications that have
 // a companyStatus.
+const STAMP_GREEN = '#1f8a4c';
 const BAGHDAD_BANK = 'مصرفبغداد';
 
 const Badge = ({status}) => {
@@ -50,6 +51,13 @@ const TransferStamp = ({number}) => {
   const {t} = useTranslation();
   return (
     <View style={styles.stamp}>
+      {/* Only the frame is tilted (like the web's ::before) so the text stays
+          upright and sharp. */}
+      <View style={styles.stampFrame} pointerEvents="none">
+        <View style={styles.stampRingWhite}>
+          <View style={styles.stampRingGreen} />
+        </View>
+      </View>
       <CustomText style={styles.stampLabel} paddingTop={0}>
         {t('transferNumber')}
       </CustomText>
@@ -115,17 +123,45 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   pillText: {color: '#fff', fontSize: 12, fontWeight: '600'},
+  // Mirrors the web's .c-transfer-stamp: green outline + inner ring, tilted
+  // frame, label over a bold number.
   stamp: {
-    borderWidth: 1.5,
-    borderColor: '#1E8E4F',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    alignSelf: 'flex-start',
     alignItems: 'center',
+    gap: 0,
+    paddingTop: 2,
+    paddingBottom: 2,
+    paddingHorizontal: 16,
+    minWidth: 76,
+  },
+  stampFrame: {
+    ...StyleSheet.absoluteFillObject,
+    borderWidth: 2,
+    borderColor: STAMP_GREEN,
+    borderRadius: 8,
+    backgroundColor: 'rgba(31,138,76,0.04)',
     transform: [{rotate: '-3deg'}],
   },
-  stampLabel: {color: '#1E8E4F', fontSize: 9, fontWeight: '600'},
-  stampNumber: {color: '#1E8E4F', fontSize: 12, fontWeight: '800'},
+  stampRingWhite: {
+    ...StyleSheet.absoluteFillObject,
+    borderWidth: 2,
+    borderColor: '#fff',
+    borderRadius: 6,
+  },
+  stampRingGreen: {
+    ...StyleSheet.absoluteFillObject,
+    borderWidth: 1,
+    borderColor: 'rgba(31,138,76,0.55)',
+    borderRadius: 4,
+  },
+  stampLabel: {color: STAMP_GREEN, fontSize: 8, fontWeight: '700', lineHeight: 9},
+  stampNumber: {
+    color: STAMP_GREEN,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    lineHeight: 13,
+  },
 });
 
 export default CompanyStatusBadge;

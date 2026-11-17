@@ -165,6 +165,7 @@
   "statusUnknown": "نەزانراو",
   "nextCreateForRemaining": "حەوالەکە جێبەجێ کرا. بڕی ماوەی وەسڵەکە {{amount}}ە — دەتوانیت لێرەوە مامەڵەیەکی نوێی بۆ دروست بکەیت",
   "createForRemainingAction": "دروستکردنی مامەڵە بۆ بڕی ماوە",
+  "bawalesFileStatusLabel": "دۆخی بۆڵیصەکان",
   "payAsycudaReview": "پشکنینی سەرەتایی",
   "payNotStarted": "جێبەجێ نەکراوە",
   "payNotSent": "نەنێردراوە",

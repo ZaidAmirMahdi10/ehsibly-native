@@ -148,6 +148,7 @@ const InvoiceDetailScreen = () => {
           notesForBank: prev?.notesForBank,
           bankStatus: prev?.bankStatus,
           rejectionReason: prev?.rejectionReason,
+          bawalesFileRejectionReason: prev?.bawalesFileRejectionReason,
           rejectionReasonsHistories: prev?.rejectionReasonsHistories,
         }));
       }
@@ -247,6 +248,7 @@ const InvoiceDetailScreen = () => {
             notesForBank: full.notesForBank,
             bankStatus: full.bankStatus,
             rejectionReason: full.rejectionReason,
+            bawalesFileRejectionReason: full.bawalesFileRejectionReason,
             rejectionReasonsHistories: full.rejectionReasonsHistories,
           }));
         }
@@ -643,6 +645,15 @@ const InvoiceDetailScreen = () => {
     ...(invoice.rejectionReasonsHistories || [])
       .filter(h => h.rejectionReason && h.rejectionReason !== invoice.rejectionReason)
       .map(h => ({id: h.id, text: h.rejectionReason, date: h.date})),
+    // Same as the web: the bawales file's rejection reason, labelled.
+    ...(invoice.bawalesFileRejectionReason?.trim()
+      ? [
+          {
+            id: 'bawales',
+            text: `${t('bawalesFileStatusLabel')}: ${invoice.bawalesFileRejectionReason.trim()}`,
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -710,8 +721,7 @@ const InvoiceDetailScreen = () => {
           </View>
         ) : null}
 
-        {invoice.rejectionReason ||
-        invoice.rejectionReasonsHistories?.length > 0 ? (
+        {rejectionEntries.length > 0 ? (
           // Compact preview: the full text can be very long, so it lives in a
           // scrollable modal instead of stretching the screen.
           <TouchableOpacity

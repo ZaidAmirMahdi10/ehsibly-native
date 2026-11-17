@@ -166,6 +166,7 @@
   "statusUnknown": "غير معروف",
   "nextCreateForRemaining": "تم تنفيذ الحوالة. المبلغ المتبقي من الفاتورة {{amount}} — يمكنك إنشاء معاملة جديدة له من هنا",
   "createForRemainingAction": "إنشاء معاملة للمبلغ المتبقي",
+  "bawalesFileStatusLabel": "حالة البوالص",
   "payAsycudaReview": "تحقق أولي",
   "payNotStarted": "غير منفذة",
   "payNotSent": "غير مُرسلة",

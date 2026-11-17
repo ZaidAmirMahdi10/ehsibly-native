@@ -165,6 +165,7 @@
   "statusUnknown": "Unknown",
   "nextCreateForRemaining": "The transfer is done. The invoice's remaining amount is {{amount}} — you can create a new transaction for it from here",
   "createForRemainingAction": "Create a transaction for the remaining amount",
+  "bawalesFileStatusLabel": "Bawales status",
   "payAsycudaReview": "Preliminary review",
   "payNotStarted": "Not Started",
   "payNotSent": "Not sent",
