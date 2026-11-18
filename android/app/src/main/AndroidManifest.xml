@@ -4,6 +4,11 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- ACCESS_WIFI_STATE (pulled in by a library) implies a Wi-Fi hardware
+         requirement; mark it optional so Play doesn't filter out devices
+         without Wi-Fi (tablets, Android XR, desktop). -->
+    <uses-feature android:name="android.hardware.wifi" android:required="false" />
+
     <application
       android:name=".MainApplication"
       android:label="@string/app_name"
