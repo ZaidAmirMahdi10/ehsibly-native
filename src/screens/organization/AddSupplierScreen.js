@@ -7,6 +7,7 @@ import CustomText from '../../components/CustomText';
 import FormField from '../../components/FormField';
 import PrimaryButton from '../../components/PrimaryButton';
 import ErrorState from '../../components/ErrorState';
+import SupplierDocuments from '../../components/SupplierDocuments';
 import {createSupplier, updateSupplier} from '../../services/suppliers';
 import {useAuth} from '../../context/AuthContext';
 import {COLORS} from '../../constants/theme';
@@ -133,6 +134,10 @@ const AddSupplierScreen = () => {
           />
         </>
       ) : null}
+
+      {/* Documents are only manageable once the supplier exists, and they
+          save immediately (independent of the Save button below). */}
+      {isEdit ? <SupplierDocuments supplierId={editItem.id} /> : null}
 
       <PrimaryButton
         title={isEdit ? t('saveChangesAction') : t('saveSupplierAction')}

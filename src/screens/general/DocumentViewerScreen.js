@@ -136,7 +136,17 @@ const DocumentViewerScreen = () => {
       ) : error ? (
         <ErrorState message={t('documentLoadErrorMessage')} onRetry={load} />
       ) : fileKind === 'pdf' ? (
-        <Pdf source={{uri: fileUri}} style={styles.flex} onError={() => setError(true)} />
+        // The app runs RTL for Arabic, which makes react-native-pdf compute its
+        // horizontal scroll offset mirrored: the page ended up shifted right
+        // and clipped. Pin the viewer itself to LTR and fit pages to width.
+        <View style={styles.pdfWrap}>
+          <Pdf
+            source={{uri: fileUri}}
+            style={styles.pdf}
+            fitPolicy={0}
+            onError={() => setError(true)}
+          />
+        </View>
       ) : fileKind === 'image' ? (
         <Image
           source={{uri: fileUri}}
@@ -169,6 +179,8 @@ const DocumentViewerScreen = () => {
 const styles = StyleSheet.create({
   safeArea: {flex: 1, backgroundColor: COLORS.bg},
   flex: {flex: 1},
+  pdfWrap: {flex: 1, direction: 'ltr'},
+  pdf: {flex: 1, width: '100%', direction: 'ltr', backgroundColor: COLORS.bg},
   header: {
     backgroundColor: COLORS.primary,
     paddingHorizontal: 12,

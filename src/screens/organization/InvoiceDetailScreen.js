@@ -16,13 +16,14 @@ import {LanguageContext} from '../../../App';
 
 import {useAlert} from '../../context/AlertContext';
 import CustomText from '../../components/CustomText';
-import StatusBadge from '../../components/StatusBadge';
+import CompanyStatusBadge, {CompanyStatusPill} from '../../components/CompanyStatusBadge';
 import StripedCard from '../../components/StripedCard';
 import LoadingState from '../../components/LoadingState';
 import ErrorState from '../../components/ErrorState';
 import DocumentListItem, {DOC_LABEL_KEYS} from '../../components/DocumentListItem';
 import DocumentUploadZone from '../../components/DocumentUploadZone';
 import InfoBox from '../../components/InfoBox';
+import ErrorBox from '../../components/ErrorBox';
 import PrimaryButton from '../../components/PrimaryButton';
 import FormField from '../../components/FormField';
 import ModalSheet from '../../components/ModalSheet';
@@ -33,14 +34,21 @@ import {
   getMultiContainerInvoices,
   updateInvoiceMainFiles,
   deleteInvoiceDoc,
+  archiveInvoice,
+  isInvoiceFileAvailable,
   setCustomsDeclarationNumber as saveCustomsDeclarationNumber,
 } from '../../services/invoices/multiContainerWithoutC';
+import {deleteSupplierDocument, uploadSupplierDocument} from '../../services/suppliers';
+import {useAuth} from '../../context/AuthContext';
 import {
   getPaymentDetail,
   updateInvoicePaymentStatus,
   updatePaymentDocuments,
+  getInvoicePayments,
 } from '../../services/paymentDetails';
 import {
+  BENEFICIARY_DOC_TYPES,
+  BENEFICIARY_UPLOAD_SLOTS,
   INVOICE_DOC_TYPES,
   NON_INVOICE_DOC_SOURCES,
   paymentDocTypesForBank,
@@ -51,6 +59,7 @@ import {ChevronLeft, ChevronRight} from 'lucide-react-native';
 
 const TABS = {
   DOCUMENTS: 'documents',
+  BENEFICIARY: 'beneficiary',
   PAYMENT: 'payment',
   CONTAINERS: 'containers',
 };
@@ -80,6 +89,7 @@ const InvoiceDetailScreen = () => {
   const route = useRoute();
   const navigation = useNavigation();
   const {showAlert} = useAlert();
+  const {session} = useAuth();
   const {currentDirection} = useContext(LanguageContext);
   const isRTL = currentDirection === 'rtl';
   const rowDirection = {flexDirection: isRTL ? 'row-reverse' : 'row'};
@@ -101,13 +111,19 @@ const InvoiceDetailScreen = () => {
   const [bayanNumber, setBayanNumber] = useState(null);
   const [bayanPickerVisible, setBayanPickerVisible] = useState(false);
   const [otherFileModalVisible, setOtherFileModalVisible] = useState(false);
+  const [rejectionModalVisible, setRejectionModalVisible] = useState(false);
   const [newOtherFileName, setNewOtherFileName] = useState('');
 
   const [paymentDetail, setPaymentDetail] = useState(null);
+  const [allPayments, setAllPayments] = useState([]);
   const [paymentLoading, setPaymentLoading] = useState(!!invoice.latestPaymentDetail?.id);
   const [paymentError, setPaymentError] = useState(null);
   const [isSendingToBank, setIsSendingToBank] = useState(false);
   const [uploadingType, setUploadingType] = useState(null);
+  // ids of documents whose file the server can't serve (flagged in the list,
+  // like the web's "Failed to view the file" message above a broken file).
+  const [brokenDocIds, setBrokenDocIds] = useState({});
+  const [checkingDocs, setCheckingDocs] = useState(false);
 
   const refreshInvoice = async () => {
     try {
@@ -127,7 +143,14 @@ const InvoiceDetailScreen = () => {
       if (fresh) {
         // The list endpoint's DTO deliberately omits notesForBank/bankStatus
         // (raw columns) — keep the byId-fetched values instead of clobbering.
-        setInvoice(prev => ({...fresh, notesForBank: prev?.notesForBank, bankStatus: prev?.bankStatus}));
+        setInvoice(prev => ({
+          ...fresh,
+          notesForBank: prev?.notesForBank,
+          bankStatus: prev?.bankStatus,
+          rejectionReason: prev?.rejectionReason,
+          bawalesFileRejectionReason: prev?.bawalesFileRejectionReason,
+          rejectionReasonsHistories: prev?.rejectionReasonsHistories,
+        }));
       }
     } catch (err) {
       // Non-fatal — the screen keeps showing the last known state.
@@ -143,13 +166,37 @@ const InvoiceDetailScreen = () => {
     loadInvoiceDocs();
   };
 
+  const checkDocsAvailability = async docs => {
+    setCheckingDocs(true);
+    const results = await Promise.all(
+      docs.map(async doc => {
+        try {
+          return (await isInvoiceFileAvailable(doc.id)) ? null : doc.id;
+        } catch (err) {
+          return null; // network trouble says nothing about the file itself
+        }
+      }),
+    );
+    setBrokenDocIds(prev => {
+      const next = {...prev};
+      docs.forEach(doc => delete next[doc.id]);
+      results.filter(Boolean).forEach(id => {
+        next[id] = true;
+      });
+      return next;
+    });
+    setCheckingDocs(false);
+  };
+
   const loadInvoiceDocs = async () => {
     setDocsLoading(true);
     setDocsError(null);
     try {
       const data = await getInvoiceMainFiles(invoice.id);
-      setInvoiceDocs(data?.data?.documents || []);
+      const docs = data?.data?.documents || [];
+      setInvoiceDocs(docs);
       setBayanNumber(data?.data?.customsDeclrationNumber || null);
+      checkDocsAvailability(docs);
     } catch (err) {
       setDocsError(t('genericErrorMessage'));
     } finally {
@@ -157,7 +204,17 @@ const InvoiceDetailScreen = () => {
     }
   };
 
+  // Every transaction of the invoice — needed to know what's left to pay.
+  const loadAllPayments = async () => {
+    try {
+      setAllPayments(await getInvoicePayments(invoice.id));
+    } catch (err) {
+      // Non-fatal: the "create for remaining" button just stays hidden.
+    }
+  };
+
   const loadPaymentDetail = async () => {
+    loadAllPayments();
     const paymentId = invoice.latestPaymentDetail?.id;
     if (!paymentId) {
       setPaymentDetail(null);
@@ -186,7 +243,14 @@ const InvoiceDetailScreen = () => {
         if (full) {
           // Both fields are raw columns the list endpoint's DTO omits:
           // notesForBank for display, bankStatus for the Edit/Send gating.
-          setInvoice(prev => ({...prev, notesForBank: full.notesForBank, bankStatus: full.bankStatus}));
+          setInvoice(prev => ({
+            ...prev,
+            notesForBank: full.notesForBank,
+            bankStatus: full.bankStatus,
+            rejectionReason: full.rejectionReason,
+            bawalesFileRejectionReason: full.bawalesFileRejectionReason,
+            rejectionReasonsHistories: full.rejectionReasonsHistories,
+          }));
         }
       } catch (err) {
         // Non-fatal: the note simply stays hidden if this lookup fails.
@@ -207,11 +271,67 @@ const InvoiceDetailScreen = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigation]);
 
+  // Same rule as the web's ViewInvoice: what's left of the invoice is its
+  // amount minus the ACCEPTED transactions; a new one can be created for it
+  // when every transaction so far is accepted (orgUser only).
+  const acceptedTotal = allPayments
+    .filter(p => p?.status === 'ACCEPTED')
+    .reduce((sum, p) => sum + (Number(p?.amount) || 0), 0);
+  const remainingAmount =
+    invoice.amountForSupplier != null ? Number(invoice.amountForSupplier) - acceptedTotal : null;
+  const canCreateForRemaining =
+    session?.userType === 'orgUser' &&
+    allPayments.length > 0 &&
+    allPayments.every(p => p?.status === 'ACCEPTED') &&
+    remainingAmount > 0.0001;
+
   const handleViewDoc = doc => {
     navigation.navigate('DocumentViewer', {
       url: getInvoiceFileUrl(doc.id),
       title: t(DOC_LABEL_KEYS[doc.type] || 'docViewBtn'),
     });
+  };
+
+  // Same gating the backend enforces: an edit is allowed while the bank has
+  // not taken the invoice yet (or after it rejected it); archiving only
+  // while it was never sent. bankStatus arrives asynchronously from the byId
+  // fetch, so the buttons simply stay hidden until it's known.
+  const canEditInvoice = invoice.bankStatus === 'NOT_SENT' || invoice.bankStatus === 'REJECTED';
+  const canArchiveInvoice = invoice.bankStatus === 'NOT_SENT';
+  const [isArchiving, setIsArchiving] = useState(false);
+
+  const handleEditInvoice = () => {
+    navigation.navigate('EditInvoice', {
+      invoiceId: invoice.id,
+      onSaved: changes =>
+        // `amount` is the list DTO's pre-formatted string — drop it so the
+        // header falls back to the edited amountForSupplier.
+        setInvoice(prev => ({...prev, ...changes, amount: undefined})),
+    });
+  };
+
+  const handleArchiveInvoice = () => {
+    showAlert(t('archiveInvoiceConfirmTitle'), `${t('archiveInvoiceConfirmMessage')} ${invoice.invoiceNumber}`, [
+      {text: t('cancel'), style: 'cancel'},
+      {
+        text: t('archiveAction'),
+        style: 'destructive',
+        onPress: async () => {
+          setIsArchiving(true);
+          try {
+            await archiveInvoice(invoice.id);
+            navigation.goBack();
+          } catch (err) {
+            setIsArchiving(false);
+            showAlert(
+              err?.response?.data?.message === 'cannotArchiveMCIBecauseLinked'
+                ? t('cannotArchiveInvoiceError')
+                : t('genericErrorMessage'),
+            );
+          }
+        },
+      },
+    ]);
   };
 
   const handleDeleteDoc = doc => {
@@ -230,6 +350,61 @@ const InvoiceDetailScreen = () => {
         },
       },
     ]);
+  };
+
+  // Beneficiary documents live on the supplier, not the invoice — they're
+  // removed through the supplier's own (full-sync) files endpoint, so the
+  // names of every other supplier document are re-sent as keep-markers. This
+  // removes the file from the supplier itself, hence the explicit warning.
+  const handleDeleteBeneficiaryDoc = doc => {
+    showAlert(t('deleteBeneficiaryDocTitle'), t('deleteBeneficiaryDocMessage'), [
+      {text: t('cancel'), style: 'cancel'},
+      {
+        text: t('deleteAction'),
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const supplierDocNames = invoiceDocs
+              .filter(d => BENEFICIARY_DOC_TYPES.includes(d.type))
+              .map(d => d.type);
+            await deleteSupplierDocument(invoice.supplier?.id, doc.type, supplierDocNames);
+            await loadInvoiceDocs();
+          } catch (err) {
+            showAlert(t('genericErrorMessage'));
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleUploadBeneficiaryDoc = async docType => {
+    let file;
+    try {
+      [file] = await pick({type: [types.pdf, types.images]});
+    } catch (err) {
+      if (!(isErrorWithCode(err) && err.code === errorCodes.OPERATION_CANCELED)) {
+        showAlert(t('uploadErrorMessage'));
+      }
+      return;
+    }
+
+    setUploadingType(docType);
+    try {
+      const supplierDocNames = invoiceDocs
+        .filter(d => BENEFICIARY_DOC_TYPES.includes(d.type))
+        .map(d => d.type);
+      await uploadSupplierDocument(
+        invoice.supplier?.id,
+        docType,
+        {uri: file.uri, name: file.name || docType, type: file.type || 'application/pdf'},
+        supplierDocNames,
+      );
+      await loadInvoiceDocs();
+    } catch (err) {
+      showAlert(t('uploadErrorMessage'));
+    } finally {
+      setUploadingType(null);
+    }
   };
 
   // Both upload endpoints are full syncs of their doc set — any known field
@@ -384,7 +559,24 @@ const InvoiceDetailScreen = () => {
     }
   };
 
+  // The beneficiary's own papers (supplier certificate + articles of
+  // association) must be present AND readable before an application can go to
+  // the bank. Only judged once the document list has loaded and the
+  // availability probe has finished, so a slow load can't show a false alarm.
+  const beneficiaryIssues = BENEFICIARY_UPLOAD_SLOTS.map(slot => {
+    const doc = invoiceDocs.find(d => slot.aliases.includes(d.type));
+    if (!doc) {
+      return {type: slot.type, reason: 'missing'};
+    }
+    return brokenDocIds[doc.id] ? {type: slot.type, reason: 'broken'} : null;
+  }).filter(Boolean);
+  const beneficiaryDocsReady = !docsLoading && !docsError && !checkingDocs;
+  const beneficiaryBlocksSend = beneficiaryDocsReady && beneficiaryIssues.length > 0;
+
   const handleSendToBank = async () => {
+    if (beneficiaryBlocksSend) {
+      return;
+    }
     // Document-completeness gate (explicit product decision 2026-07-09: the
     // stricter bayan-based set, deliberately broader than web
     // ViewInvoice.js's validateDocuments):
@@ -447,6 +639,23 @@ const InvoiceDetailScreen = () => {
     ]);
   };
 
+  // Latest rejection first, then earlier ones from history (deduplicated).
+  const rejectionEntries = [
+    ...(invoice.rejectionReason ? [{id: 'latest', text: invoice.rejectionReason}] : []),
+    ...(invoice.rejectionReasonsHistories || [])
+      .filter(h => h.rejectionReason && h.rejectionReason !== invoice.rejectionReason)
+      .map(h => ({id: h.id, text: h.rejectionReason, date: h.date})),
+    // Same as the web: the bawales file's rejection reason, labelled.
+    ...(invoice.bawalesFileRejectionReason?.trim()
+      ? [
+          {
+            id: 'bawales',
+            text: `${t('bawalesFileStatusLabel')}: ${invoice.bawalesFileRejectionReason.trim()}`,
+          },
+        ]
+      : []),
+  ];
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.primaryDark} />
@@ -470,7 +679,7 @@ const InvoiceDetailScreen = () => {
             <CustomText style={styles.detailHeaderBank}>{invoice.supplier.name}</CustomText>
           ) : null}
         </View>
-        <StatusBadge status={invoice.generalBadgeStatus} />
+        <CompanyStatusBadge invoice={invoice} />
       </View>
 
       <View style={styles.summaryStrip}>
@@ -511,7 +720,51 @@ const InvoiceDetailScreen = () => {
             </CustomText>
           </View>
         ) : null}
+
+        {rejectionEntries.length > 0 ? (
+          // Compact preview: the full text can be very long, so it lives in a
+          // scrollable modal instead of stretching the screen.
+          <TouchableOpacity
+            style={styles.rejectionBox}
+            activeOpacity={0.7}
+            onPress={() => setRejectionModalVisible(true)}>
+            <CustomText bold style={styles.rejectionTitle}>
+              {t('declineReasonLabel')}
+            </CustomText>
+            <CustomText
+              style={styles.rejectionText}
+              lineHeight={22}
+              numberOfLines={3}>
+              {rejectionEntries[0]?.text}
+            </CustomText>
+            <CustomText bold style={styles.rejectionMore} paddingTop={0}>
+              {rejectionEntries.length > 1
+                ? `${t('viewAllReasons')} (${rejectionEntries.length})`
+                : t('viewAllReasons')}
+            </CustomText>
+          </TouchableOpacity>
+        ) : null}
       </View>
+
+      {canEditInvoice ? (
+        <View style={[styles.invoiceActions, rowDirection]}>
+          <PrimaryButton
+            title={t('editInvoiceAction')}
+            variant="secondary"
+            onPress={handleEditInvoice}
+            style={styles.invoiceActionBtn}
+          />
+          {canArchiveInvoice ? (
+            <PrimaryButton
+              title={t('archiveAction')}
+              variant="danger"
+              onPress={handleArchiveInvoice}
+              loading={isArchiving}
+              style={styles.invoiceActionBtn}
+            />
+          ) : null}
+        </View>
+      ) : null}
 
       <View style={[styles.tabBar, rowDirection]}>
         <TouchableOpacity
@@ -530,6 +783,21 @@ const InvoiceDetailScreen = () => {
           </View>
         </TouchableOpacity>
         <TouchableOpacity
+          style={[styles.tab, activeTab === TABS.BENEFICIARY && styles.tabActive]}
+          onPress={() => setActiveTab(TABS.BENEFICIARY)}>
+          <View style={styles.tabContent}>
+            <CustomText style={styles.tabIcon} paddingTop={0}>
+              🧾
+            </CustomText>
+            <CustomText
+              bold={activeTab === TABS.BENEFICIARY}
+              style={[styles.tabText, activeTab === TABS.BENEFICIARY && styles.tabTextActive]}
+              paddingTop={0}>
+              {t('tabBeneficiaryDocs')}
+            </CustomText>
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity
           style={[styles.tab, activeTab === TABS.PAYMENT && styles.tabActive]}
           onPress={() => setActiveTab(TABS.PAYMENT)}>
           <View style={styles.tabContent}>
@@ -540,7 +808,7 @@ const InvoiceDetailScreen = () => {
               bold={activeTab === TABS.PAYMENT}
               style={[styles.tabText, activeTab === TABS.PAYMENT && styles.tabTextActive]}
               paddingTop={0}>
-              {t('tabPayment')}
+              {t('tabTransfers')}
             </CustomText>
           </View>
         </TouchableOpacity>
@@ -573,6 +841,57 @@ const InvoiceDetailScreen = () => {
               </View>
             ))}
           </View>
+        ) : activeTab === TABS.BENEFICIARY ? (
+          docsLoading ? (
+            <View style={styles.card}>
+              <LoadingState />
+            </View>
+          ) : docsError ? (
+            <View style={styles.card}>
+              <ErrorState message={docsError} onRetry={loadInvoiceDocs} />
+            </View>
+          ) : (
+            <>
+              {invoice.supplier?.name ? (
+                <CustomText bold style={styles.beneficiaryName}>
+                  {invoice.supplier.name}
+                </CustomText>
+              ) : null}
+              <CustomText bold style={styles.sectionTitle}>
+                {t('beneficiaryDocsTitle')}
+              </CustomText>
+              {invoiceDocs.filter(doc => BENEFICIARY_DOC_TYPES.includes(doc.type)).length === 0 ? (
+                <CustomText center style={styles.emptyText}>
+                  {t('noBeneficiaryDocs')}
+                </CustomText>
+              ) : (
+                invoiceDocs
+                  .filter(doc => BENEFICIARY_DOC_TYPES.includes(doc.type))
+                  .map(doc => (
+                    <DocumentListItem
+                      key={doc.id}
+                      broken={!!brokenDocIds[doc.id]}
+                      type={doc.type}
+                      isRTL={isRTL}
+                      onView={() => handleViewDoc(doc)}
+                      onDelete={() => handleDeleteBeneficiaryDoc(doc)}
+                    />
+                  ))
+              )}
+              <View style={styles.uploadSection}>
+                {BENEFICIARY_UPLOAD_SLOTS.filter(
+                  slot => !invoiceDocs.some(doc => slot.aliases.includes(doc.type)),
+                ).map(slot => (
+                  <DocumentUploadZone
+                    key={slot.type}
+                    label={t(DOC_LABEL_KEYS[slot.type])}
+                    uploading={uploadingType === slot.type}
+                    onPress={() => handleUploadBeneficiaryDoc(slot.type)}
+                  />
+                ))}
+              </View>
+            </>
+          )
         ) : activeTab === TABS.DOCUMENTS ? (
           docsLoading ? (
             <View style={styles.card}>
@@ -587,7 +906,7 @@ const InvoiceDetailScreen = () => {
               <CustomText bold style={styles.sectionTitle}>
                 {t('invoiceDocumentsTitle')}
               </CustomText>
-              {invoiceDocs.map(doc => (
+              {invoiceDocs.filter(doc => !BENEFICIARY_DOC_TYPES.includes(doc.type)).map(doc => (
                 <React.Fragment key={doc.id}>
                   {doc.type === CUSTOMS_DECLARATION_TYPE && bayanNumber ? (
                     <TouchableOpacity
@@ -603,6 +922,7 @@ const InvoiceDetailScreen = () => {
                     </TouchableOpacity>
                   ) : null}
                   <DocumentListItem
+                    broken={!!brokenDocIds[doc.id]}
                     type={doc.type}
                     isRTL={isRTL}
                     onView={() => handleViewDoc(doc)}
@@ -645,6 +965,7 @@ const InvoiceDetailScreen = () => {
                 .map(doc => (
                   <DocumentListItem
                     key={doc.id}
+                    broken={!!brokenDocIds[doc.id]}
                     type={doc.type}
                     isRTL={isRTL}
                     onView={() => handleViewDoc(doc)}
@@ -719,7 +1040,12 @@ const InvoiceDetailScreen = () => {
               },
               {
                 label: t('paymentStatus'),
-                value: <StatusBadge status={paymentDetail.companyPaymentStatus} />,
+                value: (
+                  <CompanyStatusPill
+                    status={paymentDetail.companyPaymentStatus}
+                    transactionNumber={paymentDetail.transactionNumber}
+                  />
+                ),
               },
               {label: t('paymentReference'), value: paymentDetail.refrenceNumber},
               {label: t('paymentPurpose'), value: paymentDetail.purposeOfPayment},
@@ -741,11 +1067,42 @@ const InvoiceDetailScreen = () => {
                   onPress={() => navigation.navigate('GenerateApplication', {invoice})}
                   style={styles.actionBtn}
                 />
+                {beneficiaryBlocksSend ? (
+                  <ErrorBox
+                    text={`${t('supplierDocsBrokenCannotSend')}\n${beneficiaryIssues
+                      .map(
+                        issue =>
+                          `• ${t(DOC_LABEL_KEYS[issue.type])} — ${t(
+                            issue.reason === 'missing' ? 'beneficiaryDocMissing' : 'beneficiaryDocBroken',
+                          )}`,
+                      )
+                      .join('\n')}`}
+                  />
+                ) : null}
                 <PrimaryButton
                   title={t('sendToBankAction')}
                   onPress={handleSendToBank}
                   loading={isSendingToBank}
+                  disabled={beneficiaryBlocksSend || checkingDocs}
                   style={styles.actionBtn}
+                />
+              </>
+            ) : canCreateForRemaining ? (
+              <>
+                <CustomText center style={styles.sentNotice}>
+                  {t('nextCreateForRemaining', {
+                    amount: `${formatAmount(remainingAmount)} ${paymentDetail.currency || invoice.currency || ''}`.trim(),
+                  })}
+                </CustomText>
+                <PrimaryButton
+                  title={t('createForRemainingAction')}
+                  onPress={() =>
+                    navigation.navigate('GenerateApplication', {
+                      invoice: {...invoice, totalPaid: acceptedTotal},
+                      createForRemaining: true,
+                    })
+                  }
+                  style={[styles.actionBtn, styles.fullWidthBtn]}
                 />
               </>
             ) : (
@@ -782,6 +1139,29 @@ const InvoiceDetailScreen = () => {
       </ModalSheet>
 
       <ModalSheet
+        visible={rejectionModalVisible}
+        onClose={() => setRejectionModalVisible(false)}
+        title={t('declineReasonLabel')}
+        sheetStyle={styles.rejectionSheet}>
+        <ScrollView showsVerticalScrollIndicator>
+          {rejectionEntries.map((entry, index) => (
+            <View
+              key={entry.id}
+              style={index > 0 ? styles.rejectionHistoryItem : null}>
+              {entry.date ? (
+                <CustomText style={styles.rejectionDate} paddingTop={0}>
+                  {new Date(entry.date).toISOString().split('T')[0]}
+                </CustomText>
+              ) : null}
+              <CustomText style={styles.rejectionText} lineHeight={22}>
+                {entry.text}
+              </CustomText>
+            </View>
+          ))}
+        </ScrollView>
+      </ModalSheet>
+
+      <ModalSheet
         visible={otherFileModalVisible}
         onClose={() => setOtherFileModalVisible(false)}
         title={t('addOtherFileAction')}>
@@ -804,6 +1184,17 @@ const styles = StyleSheet.create({
   container: {padding: 16, paddingBottom: 40},
   emptyActionWrap: {padding: 24, alignItems: 'center'},
   fullWidthBtn: {width: '100%', marginTop: 12},
+  beneficiaryName: {fontSize: 16, color: COLORS.primary, marginBottom: 2},
+  invoiceActions: {
+    flexDirection: 'row',
+    columnGap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: COLORS.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  invoiceActionBtn: {flex: 1, paddingVertical: 10},
   actionsWrap: {marginTop: 16, gap: 10},
   actionBtn: {marginTop: 0},
   sentNotice: {fontSize: 12, color: COLORS.success, fontWeight: '600', padding: 8},
@@ -880,6 +1271,23 @@ const styles = StyleSheet.create({
   },
   notesForBankTitle: {fontSize: 12, color: COLORS.textMuted, marginBottom: 2},
   notesForBankText: {fontSize: 13, color: COLORS.text},
+  rejectionBox: {
+    backgroundColor: `${COLORS.danger}1f`,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 12,
+  },
+  rejectionTitle: {fontSize: 12, color: COLORS.danger, marginBottom: 2},
+  rejectionText: {fontSize: 13, color: COLORS.text},
+  rejectionHistoryItem: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: `${COLORS.danger}33`,
+  },
+  rejectionMore: {fontSize: 12, color: COLORS.danger, marginTop: 8},
+  rejectionSheet: {maxHeight: '75%'},
+  rejectionDate: {fontSize: 11, color: COLORS.textMuted, marginBottom: 2},
 
   tabBar: {
     flexDirection: 'row',

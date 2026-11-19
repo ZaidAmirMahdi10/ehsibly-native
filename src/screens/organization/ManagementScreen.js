@@ -8,12 +8,14 @@ import SegmentedTabs from '../../components/SegmentedTabs';
 import SubCompaniesSection from './management/SubCompaniesSection';
 import SuppliersSection from './management/SuppliersSection';
 import BanksSection from './management/BanksSection';
+import ContainersSection from './management/ContainersSection';
 import {COLORS} from '../../constants/theme';
 
 const SECTIONS = {
   SUBCOMPANIES: 'subcompanies',
   SUPPLIERS: 'suppliers',
   BANKS: 'banks',
+  CONTAINERS: 'containers',
 };
 
 const ManagementScreen = () => {
@@ -24,6 +26,7 @@ const ManagementScreen = () => {
     {key: SECTIONS.SUBCOMPANIES, label: t('subCompaniesTab')},
     {key: SECTIONS.SUPPLIERS, label: t('suppliersTab')},
     {key: SECTIONS.BANKS, label: t('banksTab')},
+    {key: SECTIONS.CONTAINERS, label: t('containersTab')},
   ];
 
   return (
@@ -37,8 +40,10 @@ const ManagementScreen = () => {
           <SubCompaniesSection />
         ) : section === SECTIONS.SUPPLIERS ? (
           <SuppliersSection />
-        ) : (
+        ) : section === SECTIONS.BANKS ? (
           <BanksSection />
+        ) : (
+          <ContainersSection />
         )}
       </View>
     </SafeAreaView>

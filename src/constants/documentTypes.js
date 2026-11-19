@@ -51,3 +51,16 @@ export const paymentDocTypesForBank = bankNameWithNoSpace => {
   }
   return [];
 };
+
+// Documents that belong to a supplier (the "beneficiary"): merged into an
+// invoice's file list from the supplier's own table. Deleting/uploading them
+// always goes through the supplier endpoint, never the invoice one.
+export const BENEFICIARY_DOC_TYPES = ['supplierCertificate', 'articlesOfAssociation', 'articleOfAssociation'];
+
+// The two document slots a supplier can have — the upload field names the
+// backend accepts. (Old rows may carry the plural 'articlesOfAssociation'
+// name; it counts as the same slot.)
+export const BENEFICIARY_UPLOAD_SLOTS = [
+  {type: 'supplierCertificate', aliases: ['supplierCertificate']},
+  {type: 'articleOfAssociation', aliases: ['articleOfAssociation', 'articlesOfAssociation']},
+];

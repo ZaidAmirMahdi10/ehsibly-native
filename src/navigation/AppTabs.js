@@ -30,7 +30,10 @@ const Tab = createBottomTabNavigator();
 // reference). Anything else gets UnsupportedOrgTypeScreen instead, per the
 // owner's instruction, until a real dashboard exists for those verticals.
 export const MERCHANT_ORGANIZATION_TYPES = ['NO_CUSTOMER_MERCHANT', 'MERCHANT'];
-export const BANK_ORGANIZATION_TYPE = 'BANK';
+// The "temp" tab is hidden for now, not removed: set to true to bring it back.
+const SHOW_TEMP_TAB = false;
+
+const BANK_ORGANIZATION_TYPE = 'BANK';
 export const SUPPORTED_ORGANIZATION_TYPES = [...MERCHANT_ORGANIZATION_TYPES, BANK_ORGANIZATION_TYPE];
 
 export default function AppTabs() {
@@ -96,7 +99,7 @@ export default function AppTabs() {
             tabBarIcon: ({color}) => <ChartBar size={26} color={color} />,
           }}
         />
-      ) : (
+      ) : SHOW_TEMP_TAB ? (
         <Tab.Screen
           name={t('temp')}
           component={TempScreen}
@@ -110,7 +113,7 @@ export default function AppTabs() {
             ),
           }}
         />
-      )}
+      ) : null}
 
       {!isBankOrg ? (
         <Tab.Screen

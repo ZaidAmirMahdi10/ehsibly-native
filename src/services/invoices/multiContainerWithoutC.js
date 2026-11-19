@@ -89,3 +89,43 @@ export const saveNotesForBank = async (invoiceId, notes) => {
   const response = await apiClient.put(`${route}/addNotes/${invoiceId}`, {notes});
   return response.data;
 };
+
+// PUT /updateInvoiceOfMultiContsWithoutC/:id — the web app's invoice edit.
+// The body carries the invoice id AND the FULL list of its containers
+// (`ShippedContainer`): the backend deletes every container that is linked to
+// the invoice but missing from this array, so callers must always send the
+// existing ones (with their ids) alongside any new ones. Only allowed while
+// the invoice's bankStatus is NOT_SENT or REJECTED.
+export const updateInvoice = async payload => {
+  const response = await apiClient.put(
+    `/updateInvoiceOfMultiContsWithoutC/${payload.id}`,
+    payload,
+  );
+  return response.data;
+};
+
+// DELETE /archiveInvoiceOfMultiContainers/:id — moves the invoice into the
+// archive table. Only allowed while bankStatus is NOT_SENT (the backend
+// answers 400 "cannotArchiveMCIBecauseLinked" otherwise).
+export const archiveInvoice = async invoiceId => {
+  const response = await apiClient.delete(`/archiveInvoiceOfMultiContainers/${invoiceId}`);
+  return response.data;
+};
+
+// HEAD getInvoiceFile/:docId — a cheap "can this file actually be served?"
+// probe (the same handler answers 404/500 when the DB row or the stored file
+// is missing/broken), so the list can flag broken documents up front instead
+// of failing only once someone taps View — like the web's PDF viewer does.
+// Resolves true when the server answers 2xx, false when it answers an error
+// status; a network failure rethrows (that's not evidence the file is bad).
+export const isInvoiceFileAvailable = async docId => {
+  try {
+    await apiClient.head(`/${route}/getInvoiceFile/${docId}`);
+    return true;
+  } catch (err) {
+    if (err?.response) {
+      return false;
+    }
+    throw err;
+  }
+};

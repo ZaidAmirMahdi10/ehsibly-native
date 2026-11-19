@@ -61,3 +61,23 @@ export const formatNotificationTime = (value, t) => {
   }
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 };
+
+// Date helpers for the edit forms. DatePickerField works in `YYYY-MM-DD`
+// strings, while the backend writes dates straight into Prisma DateTime
+// columns, which reject date-only strings — so convert to a full ISO string on
+// the way out (null for empty/invalid) and back to YMD on the way in.
+export const ymdToISO = value => {
+  if (!value) {
+    return null;
+  }
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+};
+
+export const isoToYMD = value => {
+  if (!value) {
+    return null;
+  }
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
+};

@@ -21,7 +21,7 @@ import {LanguageContext} from '../../../App';
 import {useAuth} from '../../context/AuthContext';
 import {tajawalStyleForWeight} from '../../constants/fonts';
 import {COLORS, CARD_SHADOW, PRIMARY_SHADOW} from '../../constants/theme';
-import StatusBadge from '../../components/StatusBadge';
+import CompanyStatusBadge from '../../components/CompanyStatusBadge';
 import ListEmptyState from '../../components/ListEmptyState';
 import ErrorState from '../../components/ErrorState';
 import SearchInput from '../../components/SearchInput';
@@ -351,7 +351,7 @@ const HomeScreen = () => {
 
       <View style={[styles.txCardRight, isRTL && {alignItems: 'flex-start'}]}>
         <Text style={[styles.txAmount, af(styles.txAmount)]}>{formatAmount(item.amount)}</Text>
-        <StatusBadge status={item.generalBadgeStatus} />
+        <CompanyStatusBadge invoice={item} />
         <Text style={styles.txChevron}>{isRTL ? '‹' : '›'}</Text>
       </View>
     </TouchableOpacity>

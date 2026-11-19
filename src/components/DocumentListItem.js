@@ -10,6 +10,9 @@ export const DOC_LABEL_KEYS = {
   invoice: 'docInvoice',
   supplierCertificate: 'docSupplierCertificate',
   articlesOfAssociation: 'docArticlesOfAssociation',
+  // The backend stores this one under the singular name, so both spellings exist.
+  articleOfAssociation: 'docArticlesOfAssociation',
+  finalAccounts: 'docFinalAccounts',
   customsDeclaration: 'docCustomsDeclaration',
   thirdPartyContract: 'docThirdPartyContract',
   shippingPolicy: 'docShippingPolicy',
@@ -29,6 +32,8 @@ const DOC_ICONS = {
   invoice: '📄',
   supplierCertificate: '📋',
   articlesOfAssociation: '📑',
+  articleOfAssociation: '📑',
+  finalAccounts: '📊',
   customsDeclaration: '🛃',
   thirdPartyContract: '📜',
   shippingPolicy: '🚢',
@@ -44,12 +49,18 @@ const DOC_ICONS = {
   MansurBankForeignCurrencyTradingWindowRequest: '💱',
 };
 
-const DocumentListItem = ({type, isRTL, onView, onDelete}) => {
+const DocumentListItem = ({type, isRTL, onView, onDelete, broken}) => {
   const {t} = useTranslation();
   const labelKey = DOC_LABEL_KEYS[type];
 
   return (
-    <View style={[styles.row, {flexDirection: isRTL ? 'row-reverse' : 'row'}]}>
+    <>
+    {broken ? (
+      <CustomText style={styles.brokenText} paddingTop={0}>
+        {t('supplierFileBroken')}
+      </CustomText>
+    ) : null}
+    <View style={[styles.row, broken && styles.rowBroken, {flexDirection: isRTL ? 'row-reverse' : 'row'}]}>
       <View style={styles.iconWrap}>
         <CustomText style={styles.icon} paddingTop={0}>
           {DOC_ICONS[type] || '📄'}
@@ -58,7 +69,11 @@ const DocumentListItem = ({type, isRTL, onView, onDelete}) => {
       <CustomText bold style={styles.label} numberOfLines={1}>
         {labelKey ? t(labelKey) : type}
       </CustomText>
-      <TouchableOpacity style={styles.viewBtn} onPress={onView} activeOpacity={0.7}>
+      <TouchableOpacity
+        style={[styles.viewBtn, broken && styles.viewBtnDisabled]}
+        onPress={onView}
+        disabled={broken}
+        activeOpacity={0.7}>
         <CustomText style={styles.viewBtnText} paddingTop={0}>
           {t('docViewBtn')}
         </CustomText>
@@ -71,10 +86,14 @@ const DocumentListItem = ({type, isRTL, onView, onDelete}) => {
         </TouchableOpacity>
       ) : null}
     </View>
+    </>
   );
 };
 
 const styles = StyleSheet.create({
+  brokenText: {fontSize: 12, color: COLORS.danger, fontWeight: '600', marginBottom: 4, marginHorizontal: 4},
+  rowBroken: {borderColor: COLORS.danger},
+  viewBtnDisabled: {opacity: 0.4},
   row: {
     alignItems: 'center',
     backgroundColor: COLORS.surface,

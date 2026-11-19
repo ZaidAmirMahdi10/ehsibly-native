@@ -8,6 +8,9 @@ import LoginScreen from '../screens/general/LoginScreen';
 import RegisterScreen from '../screens/general/RegisterScreen';
 import InvoiceDetailScreen from '../screens/organization/InvoiceDetailScreen';
 import DocumentViewerScreen from '../screens/general/DocumentViewerScreen';
+import EditInvoiceScreen from '../screens/organization/EditInvoiceScreen';
+import ContainerFormScreen from '../screens/organization/ContainerFormScreen';
+import ContainerDetailScreen from '../screens/organization/ContainerDetailScreen';
 import SplashScreen from '../screens/general/SplashScreen';
 import CreateInvoiceScreen from '../screens/organization/CreateInvoiceScreen';
 import GenerateApplicationScreen from '../screens/organization/GenerateApplicationScreen';
@@ -111,6 +114,24 @@ export default function RootNavigator() {
             name="CreateInvoice"
             component={CreateInvoiceScreen}
             options={props => ({...formHeaderOptions(props), title: t('createInvoiceTitle')})}
+          />
+          <Stack.Screen
+            name="EditInvoice"
+            component={EditInvoiceScreen}
+            options={props => ({...formHeaderOptions(props), title: t('editInvoiceTitle')})}
+          />
+          <Stack.Screen
+            name="ContainerForm"
+            component={ContainerFormScreen}
+            options={props => ({
+              ...formHeaderOptions(props),
+              title: props.route.params?.editItem ? t('editContainerTitle') : t('addContainerAction'),
+            })}
+          />
+          <Stack.Screen
+            name="ContainerDetail"
+            component={ContainerDetailScreen}
+            options={props => ({...formHeaderOptions(props), title: t('containerDetailTitle')})}
           />
           <Stack.Screen
             name="GenerateApplication"
