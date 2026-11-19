@@ -12,8 +12,18 @@ const SuppliersSection = () => {
   const reload = useCallback(() => setReloadKey(k => k + 1), []);
 
   const fetchItems = useCallback(async search => {
-    const data = await getSuppliers({page: 1, limit: 20, search});
-    return data?.suppliers || [];
+    // The API pages its results (and the web pages the list); load them all so
+    // no supplier is only reachable through search.
+    const all = [];
+    let page = 1;
+    let totalPages = 1;
+    do {
+      const data = await getSuppliers({page, limit: 100, search});
+      all.push(...(data?.suppliers || []));
+      totalPages = data?.totalPages || 1;
+      page += 1;
+    } while (page <= totalPages && page <= 50);
+    return all;
   }, []);
 
   return (
@@ -26,7 +36,7 @@ const SuppliersSection = () => {
       addLabel={t('addSupplierAction')}
       onAddPress={() => navigation.navigate('AddSupplier', {onCreated: reload})}
       onSelectItem={item =>
-        navigation.navigate('AddSupplier', {editItem: item, onSaved: reload})
+        navigation.navigate('EntityDetail', {kind: 'supplier', item, onSaved: reload})
       }
     />
   );

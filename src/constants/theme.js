@@ -10,7 +10,7 @@ export const COLORS = {
   primaryLight: '#9b5cb8',
   primaryDark: '#57197a',
   accent: '#e8b4ff',
-  bg: '#f7f4fa',
+  bg: '#ffffff',
   surface: '#ffffff',
   surfaceAlt: '#f0e9f7',
   text: '#1a0f26',

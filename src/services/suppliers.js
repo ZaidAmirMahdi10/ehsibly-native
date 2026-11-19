@@ -11,7 +11,9 @@ export const getSuppliers = async (params = {}) => {
 // to create an invoice yet (the invoice form needs a currency sourced from
 // one), so callers should supply at least one bank account when possible.
 export const createSupplier = async payload => {
-  const response = await apiClient.post('/createSupplier', payload);
+  const response = await apiClient.post('/createSupplier', payload, {
+    skipUnauthorizedLogout: true,
+  });
   return response.data;
 };
 
@@ -62,4 +64,27 @@ export const uploadSupplierDocument = async (supplierId, docName, file, allDocNa
 export const getSupplierDocuments = async supplierId => {
   const response = await apiClient.get(`/supplier/byId/${supplierId}`);
   return response.data?.documents || [];
+};
+
+// Step 2 of the web's "add supplier": uploads the supplier certificate and the
+// articles of association in one request (multer field names are
+// supplierCertificate / articleOfAssociation).
+export const uploadSupplierFiles = async (supplierId, files) => {
+  const formData = new FormData();
+  Object.entries(files).forEach(([field, file]) => {
+    if (file) {
+      formData.append(field, {
+        uri: file.uri,
+        name: file.name || `${field}.pdf`,
+        type: file.type || 'application/pdf',
+      });
+    }
+  });
+  const response = await apiClient.post('/supplier/addSupplierFiles', formData, {
+    params: {id: supplierId},
+    headers: {'Content-Type': 'multipart/form-data'},
+    // RN never settles a request whose file can't be read — don't hang the form.
+    timeout: 30000,
+  });
+  return response.data;
 };

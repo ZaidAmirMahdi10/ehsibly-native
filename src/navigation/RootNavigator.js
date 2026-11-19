@@ -15,6 +15,7 @@ import SplashScreen from '../screens/general/SplashScreen';
 import CreateInvoiceScreen from '../screens/organization/CreateInvoiceScreen';
 import GenerateApplicationScreen from '../screens/organization/GenerateApplicationScreen';
 import SupplierPickerScreen from '../screens/organization/SupplierPickerScreen';
+import EntityDetailScreen from '../screens/organization/EntityDetailScreen';
 import AddSupplierScreen from '../screens/organization/AddSupplierScreen';
 import SubCompanyPickerScreen from '../screens/organization/SubCompanyPickerScreen';
 import AddSubCompanyScreen from '../screens/organization/AddSubCompanyScreen';
@@ -144,6 +145,14 @@ export default function RootNavigator() {
             options={props => ({...formHeaderOptions(props), title: t('supplierPickerTitle')})}
           />
           <Stack.Screen
+            name="EntityDetail"
+            component={EntityDetailScreen}
+            options={props => ({
+              ...formHeaderOptions(props),
+              title: props.route.params?.kind === 'supplier' ? t('supplier') : t('subCompany'),
+            })}
+          />
+          <Stack.Screen
             name="AddSupplier"
             component={AddSupplierScreen}
             options={props => ({
@@ -161,7 +170,7 @@ export default function RootNavigator() {
             component={AddSubCompanyScreen}
             options={props => ({
               ...formHeaderOptions(props),
-              title: props.route.params?.editItem ? t('editSubCompanyTitle') : t('addSubCompanyTitle'),
+              title: props.route.params?.editItem ? t('editSubCompany') : t('createSubCompany'),
             })}
           />
           <Stack.Screen

@@ -16,7 +16,7 @@ export const AlertProvider = ({children}) => {
     setConfig({
       title,
       message,
-      buttons: buttons && buttons.length ? buttons : [{text: 'OK'}],
+      buttons: buttons && buttons.length ? buttons : [{}],
     });
   }, []);
 

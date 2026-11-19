@@ -27,6 +27,9 @@ const SegmentedTabs = ({tabs, value, onChange, style}) => {
               bold={active}
               style={[styles.tabText, active && styles.tabTextActive]}
               paddingTop={0}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
               center>
               {tab.label}
             </CustomText>
@@ -49,8 +52,12 @@ const styles = StyleSheet.create({
   },
   rowRTL: {flexDirection: 'row-reverse'},
   tab: {
-    flex: 1,
-    paddingVertical: 9,
+    // size by label so a long one (e.g. "الشركات الفرعية") isn't squeezed
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 'auto',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
     borderRadius: 9,
     alignItems: 'center',
     justifyContent: 'center',

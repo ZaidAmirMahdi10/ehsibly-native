@@ -25,7 +25,7 @@ import {COLORS} from '../constants/theme';
 // form's Save button. Same backend contract as the invoice's "Beneficiary
 // Docs" tab: one full-sync endpoint, so every other document's name is sent as
 // a keep-marker.
-const SupplierDocuments = ({supplierId}) => {
+const SupplierDocuments = ({supplierId, readOnly = false}) => {
   const {t} = useTranslation();
   const navigation = useNavigation();
   const {showAlert} = useAlert();
@@ -140,10 +140,10 @@ const SupplierDocuments = ({supplierId}) => {
               isRTL={isRTL}
               broken={!!brokenIds[doc.id]}
               onView={() => handleView(doc)}
-              onDelete={() => handleDelete(doc)}
+              onDelete={readOnly ? undefined : () => handleDelete(doc)}
             />
           ))}
-          {BENEFICIARY_UPLOAD_SLOTS.filter(slot => !docs.some(doc => slot.aliases.includes(doc.name))).map(slot => (
+          {(readOnly ? [] : BENEFICIARY_UPLOAD_SLOTS).filter(slot => !docs.some(doc => slot.aliases.includes(doc.name))).map(slot => (
             <DocumentUploadZone
               key={slot.type}
               label={t(DOC_LABEL_KEYS[slot.type])}

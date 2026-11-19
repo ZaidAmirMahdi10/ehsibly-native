@@ -12,6 +12,8 @@ export const INVOICE_DOC_TYPES = [
   'thirdPartyContract',
   'shippingPolicy',
   'exitPermit',
+  // only while the bayan number is 02 (web: InvoiceDocumentsSection)
+  'swiftFile',
 ];
 
 // Doc types that a GET invoiceMainFiles response merges in from OTHER

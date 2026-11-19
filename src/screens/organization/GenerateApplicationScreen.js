@@ -77,7 +77,9 @@ const GenerateApplicationScreen = () => {
   const {t} = useTranslation();
   const navigation = useNavigation();
   const route = useRoute();
-  const {invoice} = route.params;
+  // editPayment (the existing payment's details) → "edit application": the form
+  // starts filled with what was entered before instead of empty.
+  const {invoice, editPayment} = route.params;
   const {session} = useAuth();
   const {currentDirection} = useContext(LanguageContext);
   const isRTL = currentDirection === 'rtl';
@@ -92,17 +94,17 @@ const GenerateApplicationScreen = () => {
   const [supplierBank, setSupplierBank] = useState(null);
   const [supplierAccount, setSupplierAccount] = useState(null);
 
-  const [referenceNumber, setReferenceNumber] = useState('');
-  const [purposeOfPayment, setPurposeOfPayment] = useState('');
-  const [currentPaid, setCurrentPaid] = useState('');
+  const [referenceNumber, setReferenceNumber] = useState(editPayment?.refrenceNumber || '');
+  const [purposeOfPayment, setPurposeOfPayment] = useState(editPayment?.purposeOfPayment || '');
+  const [currentPaid, setCurrentPaid] = useState(editPayment?.amount ? String(editPayment.amount) : '');
 
-  const [transferType, setTransferType] = useState('external');
-  const [fee, setFee] = useState('beneficiary');
+  const [transferType, setTransferType] = useState(editPayment?.transferType || 'external');
+  const [fee, setFee] = useState(editPayment?.fee || 'beneficiary');
   // Bank-visible notes (notesForBank) — only relevant, and only shown, once
   // the chosen Iraqi bank is Bank of Baghdad (isBaghdadBank below). Prefilled
   // from the invoice in case it was set earlier.
   const [notesForBank, setNotesForBank] = useState(invoice.notesForBank || '');
-  const [toHongKong, setToHongKong] = useState(false);
+  const [toHongKong, setToHongKong] = useState(editPayment ? !!invoice.toHongKong : false);
   const [hasGoodsEnteredTheCountry, setHasGoodsEnteredTheCountry] = useState(false);
   const [isTransactionService, setIsTransactionService] = useState(false);
 
@@ -131,13 +133,23 @@ const GenerateApplicationScreen = () => {
       ]);
       setCompanyAccounts(company || []);
       setSupplierAccounts(supplierAccs || []);
-      if (company?.length === 1) {
-        setCompanyBank({bankId: company[0].bankId, bankName: company[0].bankName});
-        setCompanyAccount(company[0]);
+      // Editing: pre-select the accounts used before; otherwise a single
+      // account is selected automatically.
+      const previousCompany = editPayment
+        ? (company || []).find(a => a.id === invoice.subCompanyBankAccount?.id)
+        : null;
+      const previousSupplier = editPayment
+        ? (supplierAccs || []).find(a => a.id === invoice.supplierBankAccountId)
+        : null;
+      const companyPick = previousCompany || (company?.length === 1 ? company[0] : null);
+      const supplierPick = previousSupplier || (supplierAccs?.length === 1 ? supplierAccs[0] : null);
+      if (companyPick) {
+        setCompanyBank({bankId: companyPick.bankId, bankName: companyPick.bankName});
+        setCompanyAccount(companyPick);
       }
-      if (supplierAccs?.length === 1) {
-        setSupplierBank({bankId: supplierAccs[0].bankId, bankName: supplierAccs[0].bankName});
-        setSupplierAccount(supplierAccs[0]);
+      if (supplierPick) {
+        setSupplierBank({bankId: supplierPick.bankId, bankName: supplierPick.bankName});
+        setSupplierAccount(supplierPick);
       }
     } catch (err) {
       setLoadError(t('genericErrorMessage'));
@@ -314,7 +326,15 @@ const GenerateApplicationScreen = () => {
         </View>
       ) : null}
 
-      <FormField label={t('purposeOfPaymentLabel')} required value={purposeOfPayment} onChangeText={setPurposeOfPayment} />
+      <FormField
+        label={t('purposeOfPaymentLabel')}
+        required
+        value={purposeOfPayment}
+        onChangeText={setPurposeOfPayment}
+        multiline
+        numberOfLines={4}
+        style={styles.notesInput}
+      />
 
       {isBaghdadBank ? (
         <>

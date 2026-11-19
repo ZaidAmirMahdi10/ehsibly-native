@@ -73,6 +73,9 @@ const BAYAN_NUMBER_REQUIRING_SHIPPING_DOCS = '03';
 // Only relevant — and only shown as an upload option — when bayan 03 is
 // selected, per the web app's validation in ViewInvoice.js.
 const SHIPPING_DOCS_FOR_BAYAN_03 = ['shippingPolicy', 'exitPermit'];
+// Bayan 02 instead requires the SWIFT file (web: InvoiceDocumentsSection).
+const BAYAN_NUMBER_REQUIRING_SWIFT = '02';
+const SWIFT_FILE_TYPE = 'swiftFile';
 const OTHER_DOC_UPLOAD_KEY = 'otherDoc';
 // Base cosmetic top padding for detailHeader — kept as a raw constant (not
 // read back off styles.detailHeader) since StyleSheet.create() output isn't
@@ -296,7 +299,24 @@ const InvoiceDetailScreen = () => {
   // not taken the invoice yet (or after it rejected it); archiving only
   // while it was never sent. bankStatus arrives asynchronously from the byId
   // fetch, so the buttons simply stay hidden until it's known.
-  const canEditInvoice = invoice.bankStatus === 'NOT_SENT' || invoice.bankStatus === 'REJECTED';
+  // Same as the web's applicationReturned: the bank (or asycuda) returned it.
+  const applicationReturned =
+    invoice.bankStatus === 'REJECTED' || invoice.companyStatus === 'REJECTED';
+  // Web ViewInvoice.js canEditPayment: edit/send only while the payment is not
+  // sent or was rejected, or the bank returned the invoice. Hidden once it is
+  // sent, in progress or completed.
+  const canEditPayment =
+    paymentDetail?.companyPaymentStatus === 'NOT_SENT' ||
+    paymentDetail?.companyPaymentStatus === 'REJECTED' ||
+    invoice.bankStatus === 'REJECTED';
+  const canEditInvoice = invoice.bankStatus === 'NOT_SENT' || applicationReturned;
+  // Documents can be changed only while the transaction isn't sent or was
+  // returned (web: canEditAnyDocuments). Once sent to the bank or completed,
+  // everything is read-only.
+  const canEditDocs =
+    canEditInvoice ||
+    paymentDetail?.companyPaymentStatus === 'NOT_SENT' ||
+    paymentDetail?.companyPaymentStatus === 'REJECTED';
   const canArchiveInvoice = invoice.bankStatus === 'NOT_SENT';
   const [isArchiving, setIsArchiving] = useState(false);
 
@@ -449,7 +469,9 @@ const InvoiceDetailScreen = () => {
       docType,
       existingTypes: invoiceDocs
         .map(doc => doc.type)
-        .filter(existingType => !NON_INVOICE_DOC_SOURCES.includes(existingType)),
+        .filter(existingType => !NON_INVOICE_DOC_SOURCES.includes(existingType) && existingType !== 'finalAccounts')
+        // like the web: the SWIFT file is only kept while the number is 02
+        .filter(existingType => existingType !== SWIFT_FILE_TYPE || bayanNumber === BAYAN_NUMBER_REQUIRING_SWIFT),
       upload: formData => updateInvoiceMainFiles(invoice.id, formData),
       onDone: loadInvoiceDocs,
     });
@@ -468,7 +490,8 @@ const InvoiceDetailScreen = () => {
   // the display name). Unlike fixed doc types, these are additive — the
   // backend never auto-deletes them on sync, and supports any number of
   // them via indexed otherDoc_N fields.
-  const isOtherDocType = type => !INVOICE_DOC_TYPES.includes(type) && !NON_INVOICE_DOC_SOURCES.includes(type);
+  const isOtherDocType = type =>
+    !INVOICE_DOC_TYPES.includes(type) && !NON_INVOICE_DOC_SOURCES.includes(type) && type !== 'finalAccounts';
 
   const handleAddOtherFile = async name => {
     let file;
@@ -601,6 +624,9 @@ const InvoiceDetailScreen = () => {
     if (currentBayan === BAYAN_NUMBER_REQUIRING_SHIPPING_DOCS) {
       requiredInvoiceDocs.push(...SHIPPING_DOCS_FOR_BAYAN_03);
     }
+    if (currentBayan === BAYAN_NUMBER_REQUIRING_SWIFT) {
+      requiredInvoiceDocs.push(SWIFT_FILE_TYPE);
+    }
     const requiredPaymentDocs = paymentDocTypesForBank(invoice.applicationBank?.nameWithNoSpace);
     const missing = [
       ...requiredInvoiceDocs.filter(type => !currentDocs.some(doc => doc.type === type)),
@@ -640,7 +666,13 @@ const InvoiceDetailScreen = () => {
   };
 
   // Latest rejection first, then earlier ones from history (deduplicated).
-  const rejectionEntries = [
+  // Shown only while the transaction is "incomplete" (returned/rejected);
+  // in any other status (sent, in progress, accepted) no reason is shown.
+  const isIncomplete =
+    applicationReturned ||
+    invoice.generalBadgeStatus === 'REJECTED' ||
+    paymentDetail?.companyPaymentStatus === 'REJECTED';
+  const rejectionEntries = !isIncomplete ? [] : [
     ...(invoice.rejectionReason ? [{id: 'latest', text: invoice.rejectionReason}] : []),
     ...(invoice.rejectionReasonsHistories || [])
       .filter(h => h.rejectionReason && h.rejectionReason !== invoice.rejectionReason)
@@ -874,12 +906,12 @@ const InvoiceDetailScreen = () => {
                       type={doc.type}
                       isRTL={isRTL}
                       onView={() => handleViewDoc(doc)}
-                      onDelete={() => handleDeleteBeneficiaryDoc(doc)}
+                      onDelete={canEditDocs ? () => handleDeleteBeneficiaryDoc(doc) : undefined}
                     />
                   ))
               )}
               <View style={styles.uploadSection}>
-                {BENEFICIARY_UPLOAD_SLOTS.filter(
+                {(canEditDocs ? BENEFICIARY_UPLOAD_SLOTS : []).filter(
                   slot => !invoiceDocs.some(doc => slot.aliases.includes(doc.type)),
                 ).map(slot => (
                   <DocumentUploadZone
@@ -906,18 +938,27 @@ const InvoiceDetailScreen = () => {
               <CustomText bold style={styles.sectionTitle}>
                 {t('invoiceDocumentsTitle')}
               </CustomText>
-              {invoiceDocs.filter(doc => !BENEFICIARY_DOC_TYPES.includes(doc.type)).map(doc => (
+              {invoiceDocs
+                .filter(
+                  doc =>
+                    !BENEFICIARY_DOC_TYPES.includes(doc.type) &&
+                    // the sub-company's final accounts belong to the sub-company, not the invoice
+                    doc.type !== 'finalAccounts' &&
+                    (doc.type !== SWIFT_FILE_TYPE || bayanNumber === BAYAN_NUMBER_REQUIRING_SWIFT),
+                )
+                .map(doc => (
                 <React.Fragment key={doc.id}>
                   {doc.type === CUSTOMS_DECLARATION_TYPE && bayanNumber ? (
                     <TouchableOpacity
                       style={[styles.bayanRow, rowDirection]}
+                      disabled={!canEditDocs}
                       onPress={() => setBayanPickerVisible(true)}
                       activeOpacity={0.7}>
                       <CustomText style={styles.bayanLabel} paddingTop={0}>
                         {t('bayanNumberLabel')}
                       </CustomText>
                       <CustomText bold style={styles.bayanValue} paddingTop={0}>
-                        {bayanNumber} · {t('changeAction')}
+                        {bayanNumber}{canEditDocs ? ` · ${t('changeAction')}` : ''}
                       </CustomText>
                     </TouchableOpacity>
                   ) : null}
@@ -926,15 +967,18 @@ const InvoiceDetailScreen = () => {
                     type={doc.type}
                     isRTL={isRTL}
                     onView={() => handleViewDoc(doc)}
-                    onDelete={() => handleDeleteDoc(doc)}
+                    onDelete={canEditDocs ? () => handleDeleteDoc(doc) : undefined}
                   />
                 </React.Fragment>
               ))}
               {bayanNumber === BAYAN_NUMBER_REQUIRING_SHIPPING_DOCS ? (
                 <InfoBox text={t('bayan03RequiresShippingDocsNote')} style={styles.infoNote} />
               ) : null}
+              {bayanNumber === BAYAN_NUMBER_REQUIRING_SWIFT && !invoiceDocs.some(doc => doc.type === SWIFT_FILE_TYPE) ? (
+                <InfoBox text={t('bayan02RequiresSwiftNote')} style={styles.infoNote} />
+              ) : null}
               <View style={styles.uploadSection}>
-                {INVOICE_DOC_TYPES.filter(type => {
+                {(canEditDocs ? INVOICE_DOC_TYPES : []).filter(type => {
                   if (invoiceDocs.some(doc => doc.type === type)) {
                     return false;
                   }
@@ -942,6 +986,9 @@ const InvoiceDetailScreen = () => {
                     SHIPPING_DOCS_FOR_BAYAN_03.includes(type) &&
                     bayanNumber !== BAYAN_NUMBER_REQUIRING_SHIPPING_DOCS
                   ) {
+                    return false;
+                  }
+                  if (type === SWIFT_FILE_TYPE && bayanNumber !== BAYAN_NUMBER_REQUIRING_SWIFT) {
                     return false;
                   }
                   return true;
@@ -969,9 +1016,10 @@ const InvoiceDetailScreen = () => {
                     type={doc.type}
                     isRTL={isRTL}
                     onView={() => handleViewDoc(doc)}
-                    onDelete={() => handleDeleteDoc(doc)}
+                    onDelete={canEditDocs ? () => handleDeleteDoc(doc) : undefined}
                   />
                 ))}
+              {canEditDocs ? (
               <PrimaryButton
                 title={`+ ${t('addOtherFileAction')} (${t('optional')})`}
                 variant="secondary"
@@ -979,6 +1027,7 @@ const InvoiceDetailScreen = () => {
                 onPress={() => setOtherFileModalVisible(true)}
                 style={styles.addOtherFileBtn}
               />
+              ) : null}
 
               {paymentDetail ? (
                 <>
@@ -989,8 +1038,10 @@ const InvoiceDetailScreen = () => {
                     <DocumentListItem key={doc.id} type={doc.type} isRTL={isRTL} onView={() => handleViewDoc(doc)} />
                   ))}
                   <View style={styles.uploadSection}>
-                    {paymentDocTypesForBank(invoice.applicationBank?.nameWithNoSpace)
-                      .filter(
+                    {(canEditDocs
+                      ? paymentDocTypesForBank(invoice.applicationBank?.nameWithNoSpace)
+                      : []
+                    ).filter(
                         type =>
                           !(paymentDetail.MCIPaymentDocs || []).some(doc => doc.type === type),
                       )
@@ -1057,16 +1108,18 @@ const InvoiceDetailScreen = () => {
             {/* Matches web ViewInvoice.js's canEditPayment: an invoice-level
                 bank rejection re-opens editing even when the payment's own
                 status isn't NOT_SENT/REJECTED. */}
-            {paymentDetail.companyPaymentStatus === 'NOT_SENT' ||
-            paymentDetail.companyPaymentStatus === 'REJECTED' ||
-            invoice.bankStatus === 'REJECTED' ? (
+            {canEditPayment ? (
               <>
-                <PrimaryButton
-                  title={t('editApplicationAction')}
-                  variant="secondary"
-                  onPress={() => navigation.navigate('GenerateApplication', {invoice})}
-                  style={styles.actionBtn}
-                />
+                {/* Editing the transfer request is only possible while the
+                    payment hasn't been sent; every other status hides it. */}
+                {paymentDetail.companyPaymentStatus === 'NOT_SENT' ? (
+                  <PrimaryButton
+                    title={t('editApplicationAction')}
+                    variant="secondary"
+                    onPress={() => navigation.navigate('GenerateApplication', {invoice, editPayment: paymentDetail})}
+                    style={styles.actionBtn}
+                  />
+                ) : null}
                 {beneficiaryBlocksSend ? (
                   <ErrorBox
                     text={`${t('supplierDocsBrokenCannotSend')}\n${beneficiaryIssues

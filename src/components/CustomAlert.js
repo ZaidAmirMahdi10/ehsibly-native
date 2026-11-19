@@ -21,7 +21,7 @@ const variantForButtonStyle = style => {
 // it gets Tajawal in Arabic like every other piece of text in the app.
 const CustomAlert = ({config, onClose}) => {
   const {t} = useTranslation();
-  const {title, message, buttons = [{text: 'OK'}]} = config || {};
+  const {title, message, buttons = [{}]} = config || {};
 
   const handlePress = button => {
     onClose();

@@ -1,9 +1,10 @@
-import React, {useContext, useState} from 'react';
+import React, {useContext, useEffect, useRef, useState} from 'react';
 import {
   View,
   Image,
   StyleSheet,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   ScrollView,
   TouchableOpacity,
@@ -38,6 +39,26 @@ const LoginScreen = () => {
   const {currentDirection} = useContext(LanguageContext);
   const isRTL = currentDirection === 'rtl';
   const insets = useSafeAreaInsets();
+
+  const scrollRef = useRef(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  // Android edge-to-edge ignores adjustResize, which left the password field
+  // and login button hidden under the keyboard. Pad the scroll content by the
+  // keyboard height so it can always scroll the form into view.
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvt, e => {
+      setKeyboardHeight(e.endCoordinates?.height || 0);
+      setTimeout(() => scrollRef.current?.scrollToEnd({animated: true}), 50);
+    });
+    const hideSub = Keyboard.addListener(hideEvt, () => setKeyboardHeight(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -81,7 +102,11 @@ const LoginScreen = () => {
       />
 
       <ScrollView
-        contentContainerStyle={styles.container}
+        ref={scrollRef}
+        contentContainerStyle={[
+          styles.container,
+          Platform.OS === 'android' && keyboardHeight > 0 && {paddingBottom: keyboardHeight + 16},
+        ]}
         keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
           <Image

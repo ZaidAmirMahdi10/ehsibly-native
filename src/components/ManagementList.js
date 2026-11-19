@@ -16,6 +16,7 @@ const ManagementList = ({
   onAddPress,
   onSelectItem,
   reloadKey,
+  renderRow,
 }) => {
   const {t} = useTranslation();
   const [search, setSearch] = useState('');
@@ -79,6 +80,7 @@ const ManagementList = ({
       onRetry={() => load(search)}
       addLabel={addLabel}
       onAddPress={onAddPress}
+      renderRow={renderRow}
     />
   );
 };

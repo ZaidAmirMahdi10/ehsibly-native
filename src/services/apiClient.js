@@ -94,7 +94,11 @@ apiClient.interceptors.response.use(
     // logout, or it would kick the user straight back to the login screen.
     const url = error.config?.url || '';
     const isDeviceToken = url.includes('/deviceToken');
-    if (error.response?.status === 401 && !isDeviceToken) {
+    // `skipUnauthorizedLogout` opts a request out too: some endpoints answer
+    // 401 for a validation problem (e.g. /createSupplier without a userId),
+    // which is not an expired session and must not log the user out.
+    const skipLogout = error.config?.skipUnauthorizedLogout === true;
+    if (error.response?.status === 401 && !isDeviceToken && !skipLogout) {
       clearApiSession();
       onUnauthorized?.();
     }

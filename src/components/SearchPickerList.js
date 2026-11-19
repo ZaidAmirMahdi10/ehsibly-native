@@ -1,5 +1,7 @@
 import {View, FlatList, TouchableOpacity, StyleSheet} from 'react-native';
+import {useContext} from 'react';
 import {useTranslation} from 'react-i18next';
+import {LanguageContext} from '../../App';
 
 import CustomText from './CustomText';
 import SearchInput from './SearchInput';
@@ -27,8 +29,11 @@ const SearchPickerList = ({
   onRetry,
   addLabel,
   onAddPress,
+  renderRow,
 }) => {
   const {t} = useTranslation();
+  const isRTL = useContext(LanguageContext)?.currentDirection === 'rtl';
+  const rowDirection = isRTL ? styles.rowRtl : null;
 
   return (
     <View style={styles.flex}>
@@ -56,22 +61,25 @@ const SearchPickerList = ({
           ItemSeparatorComponent={() => <View style={{height: 8}} />}
           ListEmptyComponent={<ListEmptyState titleKey="noResultsFound" subtitleKey="tryDifferentSearch" />}
           renderItem={({item}) =>
+            renderRow ? (
+              renderRow(item)
+            ) :
             // Without onSelectItem the list is view-only: plain, non-tappable
             // rows with no chevron (e.g. Iraqi banks, which merchants can't edit).
             onSelectItem ? (
               <TouchableOpacity
-                style={styles.row}
+                style={[styles.row, rowDirection]}
                 activeOpacity={0.75}
                 onPress={() => onSelectItem(item)}>
                 <CustomText style={styles.rowLabel} paddingTop={0}>
                   {renderItemLabel(item)}
                 </CustomText>
                 <CustomText style={styles.chevron} paddingTop={0}>
-                  ›
+                  {isRTL ? '‹' : '›'}
                 </CustomText>
               </TouchableOpacity>
             ) : (
-              <View style={styles.row}>
+              <View style={[styles.row, rowDirection]}>
                 <CustomText style={styles.rowLabel} paddingTop={0}>
                   {renderItemLabel(item)}
                 </CustomText>
@@ -100,6 +108,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 14,
   },
+  rowRtl: {flexDirection: 'row-reverse'},
   rowLabel: {flex: 1, fontSize: 14, color: COLORS.text, fontWeight: '600'},
   chevron: {fontSize: 20, color: COLORS.primaryLight},
 });

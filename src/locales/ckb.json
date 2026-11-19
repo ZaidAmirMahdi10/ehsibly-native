@@ -479,7 +479,7 @@
   "cityLabel": "شار",
   "addressLabel": "ناونیشان",
   "supplierBankAccountSectionTitle": "هەژماری بانکی",
-  "supplierBankAccountHint": "پێویستە پێش ئەوەی ئەم دابینکەرە لە فاتورەدا بەکاربهێنرێت",
+  "supplierBankAccountHint": "پێویستە پێش ئەوەی ئەم دابینکەرە لە مامەڵەی بانکیدا بەکاربهێنرێت",
   "bankLabel": "بانک",
   "chooseBankPlaceholder": "بانکێک هەڵبژێرە",
   "accountNumberLabel": "ژمارەی هەژمار",

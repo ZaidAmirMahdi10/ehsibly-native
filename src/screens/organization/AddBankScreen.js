@@ -100,7 +100,7 @@ const AddBankScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  flex: {flex: 1, backgroundColor: COLORS.bg},
+  flex: {flex: 1, backgroundColor: COLORS.surface},
   container: {padding: 16, paddingBottom: 40},
 });
 
