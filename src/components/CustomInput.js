@@ -12,7 +12,12 @@ const CustomInput = ({style, textAlign, ...props}) => {
 
   return (
     <TextInput
+      // Explicit colors: on Android dark-mode phones the default text color is
+      // white, which is invisible on the app's white background.
+      placeholderTextColor="#9AA0B2"
+      selectionColor="#4A5BD4"
       style={[
+        {color: '#1A1A1A'},
         style,
         {
           fontFamily: FONTS.DEFAULT,

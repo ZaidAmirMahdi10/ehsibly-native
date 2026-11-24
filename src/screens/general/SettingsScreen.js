@@ -11,7 +11,7 @@ import {useAuth} from '../../context/AuthContext';
 import {useAlert} from '../../context/AlertContext';
 import {COLORS, CARD_SHADOW} from '../../constants/theme';
 
-const APP_VERSION = '1.0.0-phaseA';
+const APP_VERSION = '1.1.1';
 
 // Hosted privacy policy (see "The landing Page/privacy.html", served from the
 // same Hostinger site as ehsibly.alhabbar.tech). Also the URL declared as the

@@ -42,19 +42,37 @@ const LoginScreen = () => {
 
   const scrollRef = useRef(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const fullHeight = useRef(0); // ScrollView height while the keyboard is hidden
+  const currentHeight = useRef(0);
+  const keyboardOpen = useRef(false);
 
-  // Android edge-to-edge ignores adjustResize, which left the password field
-  // and login button hidden under the keyboard. Pad the scroll content by the
-  // keyboard height so it can always scroll the form into view.
+  // Android edge-to-edge ignores adjustResize on some devices, which left the
+  // password field and login button hidden under the keyboard. On those, pad the
+  // scroll content by the keyboard height. Where the window DOES resize, the
+  // ScrollView already shrinks, so padding would leave a big empty gap.
   useEffect(() => {
     const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    // No forced scrollToEnd: it threw the view to the bottom whichever field
+    // was focused. The OS scrolls the focused input into view by itself.
+    let timer;
     const showSub = Keyboard.addListener(showEvt, e => {
-      setKeyboardHeight(e.endCoordinates?.height || 0);
-      setTimeout(() => scrollRef.current?.scrollToEnd({animated: true}), 50);
+      const kb = e.endCoordinates?.height || 0;
+      keyboardOpen.current = true;
+      clearTimeout(timer);
+      // Wait for a possible window resize before deciding whether to pad.
+      timer = setTimeout(() => {
+        const resized = fullHeight.current - currentHeight.current > kb * 0.5;
+        setKeyboardHeight(resized ? 0 : kb);
+      }, 350);
     });
-    const hideSub = Keyboard.addListener(hideEvt, () => setKeyboardHeight(0));
+    const hideSub = Keyboard.addListener(hideEvt, () => {
+      keyboardOpen.current = false;
+      clearTimeout(timer);
+      setKeyboardHeight(0);
+    });
     return () => {
+      clearTimeout(timer);
       showSub.remove();
       hideSub.remove();
     };
@@ -103,6 +121,12 @@ const LoginScreen = () => {
 
       <ScrollView
         ref={scrollRef}
+        onLayout={e => {
+          currentHeight.current = e.nativeEvent.layout.height;
+          if (!keyboardOpen.current) {
+            fullHeight.current = currentHeight.current;
+          }
+        }}
         contentContainerStyle={[
           styles.container,
           Platform.OS === 'android' && keyboardHeight > 0 && {paddingBottom: keyboardHeight + 16},
